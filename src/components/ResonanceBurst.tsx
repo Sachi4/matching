@@ -1,30 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Sigil from "@/components/Sigil";
+import { usePathname, useRouter } from "next/navigation";
+import { IconArrowsLeftRight, IconSparkles } from "@tabler/icons-react";
 import { getSupabase } from "@/lib/supabase";
 import { loadMatchDetail, type MatchDetail } from "@/lib/matchDetail";
-import { seededRandom } from "@/lib/sigil";
-import { tonePalette } from "@/lib/tones";
+import { requestResonanceFocus } from "@/lib/resonanceFocus";
 import type { Match } from "@/lib/types";
 
-const DURATION = 6000;
-const VIBRATION = [40, 60, 40, 60, 90];
+const DURATION = 5000;
 // 会場で共鳴が連続しても演出が延々と積み上がらないように、待ち行列は数件で打ち切る
 const MAX_QUEUE = 3;
 
 type Props = {
   /** 指定すると、その人が当事者の共鳴だけを演出する（未指定＝全員ぶん＝会場スクリーン） */
   meId?: string | null;
-  /** 会場スクリーンでは振動させない */
-  haptics?: boolean;
+  /** 演出後に星座UIへ遷移してハイライトするか（会場スクリーンでは遷移しない） */
+  focusPath?: string | null;
 };
 
-// 共鳴が生まれた瞬間、画面を数秒間だけ乗っ取るバースト演出。
-// 主役は2人の「印」とヒント語で、生成AIの反応名は添え物として小さく出す。
-export default function ResonanceBurst({ meId, haptics = true }: Props) {
+// 共鳴が生まれた瞬間、画面を数秒間だけ占有するバースト演出。
+// 演出が終わると星座UIに移り、共鳴した2人のドットにズームする。
+export default function ResonanceBurst({ meId, focusPath = "/feed" }: Props) {
   const [queue, setQueue] = useState<MatchDetail[]>([]);
   const seen = useRef<Set<string>>(new Set());
+  const router = useRouter();
+  const pathname = usePathname();
   const current = queue[0] ?? null;
 
   useEffect(() => {
@@ -60,16 +61,28 @@ export default function ResonanceBurst({ meId, haptics = true }: Props) {
     };
   }, [meId]);
 
-  const dismiss = useCallback(() => setQueue((prev) => prev.slice(1)), []);
+  const dismiss = useCallback(() => {
+    setQueue((prev) => {
+      const [shown, ...rest] = prev;
+      // 演出のあと、その共鳴が全体のどこで起きたのかを星座UIで見せる
+      if (shown) {
+        requestResonanceFocus(
+          shown.match.participant_id_a,
+          shown.match.participant_id_b,
+        );
+        if (focusPath && rest.length === 0 && pathname !== focusPath) {
+          router.push(focusPath);
+        }
+      }
+      return rest;
+    });
+  }, [focusPath, pathname, router]);
 
   useEffect(() => {
     if (!current) return;
-    if (haptics && typeof navigator !== "undefined" && navigator.vibrate) {
-      navigator.vibrate(VIBRATION);
-    }
     const timer = setTimeout(dismiss, DURATION);
     return () => clearTimeout(timer);
-  }, [current, haptics, dismiss]);
+  }, [current, dismiss]);
 
   if (!current) return null;
   return <Burst key={current.match.id} detail={current} onClose={dismiss} />;
@@ -83,88 +96,35 @@ export function Burst({
   detail: MatchDetail;
   onClose: () => void;
 }) {
-  const { match, toneLabel, signs } = detail;
-  const palette = tonePalette(toneLabel);
-  const rand = seededRandom(match.id);
-  const particles = Array.from({ length: 28 }, (_, i) => {
-    const angle = rand() * Math.PI * 2;
-    const dist = 90 + rand() * 220;
-    return {
-      key: i,
-      dx: `${(Math.cos(angle) * dist).toFixed(0)}px`,
-      dy: `${(Math.sin(angle) * dist).toFixed(0)}px`,
-      size: 3 + Math.round(rand() * 6),
-      color: palette[i % palette.length],
-      delay: `${(rand() * 0.5).toFixed(2)}s`,
-    };
-  });
+  const { match, nicknames } = detail;
 
   return (
     <div
       onClick={onClose}
       role="dialog"
       aria-label="共鳴が生まれました"
-      className="animate-burst-backdrop fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+      className="animate-burst-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
     >
-      <p className="text-xs tracking-[0.4em] text-white/60">共鳴</p>
-
-      <div className="relative mt-4 flex h-64 w-full max-w-lg items-center justify-center">
-        {[0, 0.6, 1.2].map((delay) => (
-          <span
-            key={delay}
-            style={{
-              animationDelay: `${delay}s`,
-              borderColor: palette[0],
-            }}
-            className="animate-burst-ring absolute h-52 w-52 rounded-full border-2"
+      <div className="relative w-full max-w-md overflow-hidden rounded-xl bg-[#16141f] px-6 py-10 text-center">
+        <div className="relative flex h-[120px] items-center justify-center">
+          <div className="burst-ring absolute h-[100px] w-[100px] rounded-full border-2 border-[#D85A30]" />
+          <div
+            className="burst-ring absolute h-[100px] w-[100px] rounded-full border-2 border-[#D85A30]"
+            style={{ animationDelay: "0.6s" }}
           />
-        ))}
-
-        {particles.map((p) => (
-          <span
-            key={p.key}
-            style={
-              {
-                "--dx": p.dx,
-                "--dy": p.dy,
-                width: p.size,
-                height: p.size,
-                backgroundColor: p.color,
-                animationDelay: p.delay,
-              } as React.CSSProperties
-            }
-            className="animate-burst-particle absolute rounded-full"
-          />
-        ))}
-
-        <div className="animate-sigil-left absolute h-44 w-44 mix-blend-screen">
-          <Sigil seed={signs[0].seed} toneLabel={toneLabel} glow />
+          <IconSparkles size={40} color="#D85A30" aria-hidden />
         </div>
-        <div className="animate-sigil-right absolute h-44 w-44 mix-blend-screen">
-          <Sigil seed={signs[1].seed} toneLabel={toneLabel} glow />
+        <p className="reveal-text mt-2 mb-1 text-[13px] text-white/60">
+          共鳴が発生しました
+        </p>
+        <p className="reveal-text mb-3 text-[22px] font-medium text-white">
+          {match.reaction_phrase}
+        </p>
+        <div className="reveal-text inline-flex items-center gap-2 text-sm text-white/60">
+          <span>{nicknames[0]}</span>
+          <IconArrowsLeftRight size={14} aria-hidden />
+          <span>{nicknames[1]}</span>
         </div>
-      </div>
-
-      <div className="animate-burst-caption mt-2 w-full max-w-lg text-center">
-        <div className="flex flex-col items-center gap-1">
-          {signs.map((s) => (
-            <p key={s.participantId} className="text-base text-white/85">
-              <span className="font-bold">{s.nickname}</span>
-              {s.hintWords.length > 0 && (
-                <span className="text-white/60">
-                  {" "}
-                  — {s.hintWords.join("・")}
-                </span>
-              )}
-            </p>
-          ))}
-        </div>
-        {match.reaction_phrase && (
-          <p className="mt-3 text-[11px] text-white/40">
-            「{match.reaction_phrase}」
-          </p>
-        )}
-        <p className="mt-4 text-[11px] text-white/30">タップで閉じる</p>
       </div>
     </div>
   );

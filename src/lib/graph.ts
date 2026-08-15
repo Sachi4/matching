@@ -5,14 +5,12 @@ export type GraphNode = {
   nickname: string;
   is_test: boolean;
   response_count: number;
-  expression_rate: number | null;
 };
 
 export type GraphEdge = {
   a: string;
   b: string;
   text_similarity: number;
-  diagnosis_closeness: number;
   resonance: number;
   shared_stimuli: number;
   matched: boolean;
@@ -29,6 +27,6 @@ export type ResonanceGraph = {
 export const EMPTY_GRAPH: ResonanceGraph = {
   nodes: [],
   edges: [],
-  match_threshold: 0.9,
+  match_threshold: 0.55,
   generated_at: "",
 };

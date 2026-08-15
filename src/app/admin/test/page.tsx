@@ -100,7 +100,7 @@ export default function TestModePage() {
         <div>
           <p className="font-bold">a. 高スコアのペアを投入</p>
           <p className="text-xs text-white/50">
-            ダミー参加者2人に、ほぼ同一の感想と同じ診断回答を投入します。
+            ダミー参加者2人に、ほぼ同一の感想を投入します。
             実際のembedding計算パイプラインを通るため、数秒後に共鳴が成立します。
           </p>
         </div>

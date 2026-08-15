@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import Constellation from "@/components/Constellation";
 import ResonanceBurst from "@/components/ResonanceBurst";
 import ResonanceFeed from "@/components/ResonanceFeed";
@@ -25,14 +24,9 @@ export default function ScreenPage() {
             <ResonanceFeed large />
           </div>
         </div>
-        <Link
-          href="/screen/mosaic"
-          className="text-center text-xs text-white/30 underline underline-offset-4"
-        >
-          モザイクウォールに切り替える
-        </Link>
       </div>
-      <ResonanceBurst haptics={false} />
+      {/* 会場の大画面はページ遷移せず、この画面の星座をそのままズームさせる */}
+      <ResonanceBurst focusPath={null} />
     </main>
   );
 }

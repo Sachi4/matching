@@ -39,8 +39,6 @@ async function request(path, init = {}) {
 
 const select = (table, query = "") =>
   request(`/rest/v1/${table}?${query}`);
-const insert = (table, rows) =>
-  request(`/rest/v1/${table}`, { method: "POST", body: JSON.stringify(rows) });
 const rpc = (name, args = {}) =>
   request(`/rest/v1/rpc/${name}`, {
     method: "POST",
@@ -76,22 +74,11 @@ async function seedPair(fixtureIndex) {
     );
   }
 
-  const [stimuli, words, questions] = await Promise.all([
+  const [stimuli, words] = await Promise.all([
     select("stimuli", "is_active=eq.true&select=*,tones(*)"),
     select("hint_words", "select=*&order=sort_order"),
-    select("diagnosis_questions", "select=*"),
   ]);
   stimuli.sort((a, b) => a.tones.sort_order - b.tones.sort_order);
-
-  // 感想より先に診断回答を入れる（感想だけだと診断の近さは既定値0.5で計算される）
-  const answers = ids.flatMap((id) =>
-    questions.map((q) => ({
-      participant_id: id,
-      question_id: q.id,
-      choice: fixture.choice,
-    })),
-  );
-  if (answers.length > 0) await insert("diagnosis_answers", answers);
 
   for (const stimulus of stimuli) {
     const toneWords = words

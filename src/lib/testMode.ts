@@ -3,11 +3,11 @@
 // b) 計算を経由せず matches に直接insertする
 // のどちらも数十秒以内に共鳴を発生させられるようにするためのもの。
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { DiagnosisQuestion, HintWord, Stimulus, Tone } from "@/lib/types";
+import type { HintWord, Stimulus, Tone } from "@/lib/types";
 import fixtures from "@/lib/test-fixtures.json";
 
 export const TEST_FIXTURES = fixtures as {
-  pairs: { label: string; freeText: string; choice: "a" | "b" }[];
+  pairs: { label: string; freeText: string }[];
   forceMatch: { score: number; phrase: string };
 };
 
@@ -46,7 +46,7 @@ export async function setTestMode(
   return Boolean(data);
 }
 
-// a) 同じ画像に、ほぼ同一の感想と同一の診断回答を投入したダミー参加者2人を作る。
+// a) 同じ画像にほぼ同一の感想を投入したダミー参加者2人を作る。
 //    感想はEdge Function経由なので、実際のembedding計算パイプラインを通る。
 export async function seedTestPair(
   supabase: SupabaseClient,
@@ -70,32 +70,15 @@ export async function seedTestPair(
     ids.push(data as string);
   }
 
-  const [{ data: stims }, { data: words }, { data: questions }] =
-    await Promise.all([
-      supabase.from("stimuli").select("*, tones(*)").eq("is_active", true),
-      supabase.from("hint_words").select("*").order("sort_order"),
-      supabase.from("diagnosis_questions").select("*").order("sort_order"),
-    ]);
+  const [{ data: stims }, { data: words }] = await Promise.all([
+    supabase.from("stimuli").select("*, tones(*)").eq("is_active", true),
+    supabase.from("hint_words").select("*").order("sort_order"),
+  ]);
 
   const stimuli = ((stims ?? []) as (Stimulus & { tones: Tone })[]).sort(
     (a, b) => a.tones.sort_order - b.tones.sort_order,
   );
   const hintWords = (words ?? []) as HintWord[];
-  const allQuestions = (questions ?? []) as DiagnosisQuestion[];
-
-  // 共鳴度 = text_weight × 感想の類似度 + type_weight × 診断の近さ なので、
-  // 感想より先に診断回答を入れておく（先に感想だけだと診断は既定値0.5で計算される）
-  const answers = ids.flatMap((id) =>
-    allQuestions.map((q) => ({
-      participant_id: id,
-      question_id: q.id,
-      choice: fixture.choice,
-    })),
-  );
-  if (answers.length > 0) {
-    const { error } = await supabase.from("diagnosis_answers").insert(answers);
-    if (error) throw error;
-  }
 
   for (const stimulus of stimuli) {
     const toneWords = hintWords

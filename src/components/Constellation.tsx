@@ -13,6 +13,12 @@ import {
 } from "d3-force";
 import { getSupabase } from "@/lib/supabase";
 import { EMPTY_GRAPH, type GraphEdge, type ResonanceGraph } from "@/lib/graph";
+import {
+  FOCUS_DURATION,
+  FOCUS_EVENT,
+  readResonanceFocus,
+  type ResonanceFocus,
+} from "@/lib/resonanceFocus";
 
 type LayoutNode = SimulationNodeDatum & {
   id: string;
@@ -24,10 +30,12 @@ type LayoutNode = SimulationNodeDatum & {
 type LayoutLink = SimulationLinkDatum<LayoutNode> & GraphEdge;
 
 const VIEW = 1000;
+// 共鳴した2人にズームするときの倍率
+const FOCUS_SCALE = 2.2;
 
 // 共鳴度が高いほど近くに置く（似ている＝近い）
 function linkDistance(resonance: number): number {
-  const t = Math.min(1, Math.max(0, (resonance - 0.4) / 0.55));
+  const t = Math.min(1, Math.max(0, (resonance - 0.15) / 0.65));
   return 420 - 340 * t;
 }
 
@@ -43,7 +51,25 @@ export default function Constellation({
   className?: string;
 }) {
   const [graph, setGraph] = useState<ResonanceGraph>(EMPTY_GRAPH);
+  const [focus, setFocus] = useState<ResonanceFocus | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // バースト演出のあと、その共鳴の2人にズームして数秒だけハイライトする
+  useEffect(() => {
+    setFocus(readResonanceFocus());
+    const onFocus = (e: Event) => {
+      setFocus((e as CustomEvent<ResonanceFocus>).detail);
+    };
+    window.addEventListener(FOCUS_EVENT, onFocus);
+    return () => window.removeEventListener(FOCUS_EVENT, onFocus);
+  }, []);
+
+  useEffect(() => {
+    if (!focus) return;
+    const remaining = Math.max(0, FOCUS_DURATION - (Date.now() - focus.at));
+    const timer = setTimeout(() => setFocus(null), remaining);
+    return () => clearTimeout(timer);
+  }, [focus]);
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -133,6 +159,21 @@ export default function Constellation({
 
   const hasData = layout.nodes.length > 0;
 
+  const focused = focus
+    ? {
+        a: layout.byId.get(focus.a),
+        b: layout.byId.get(focus.b),
+      }
+    : null;
+  const zoom =
+    focused?.a && focused?.b
+      ? {
+          x: ((focused.a.x ?? 0) + (focused.b.x ?? 0)) / 2,
+          y: ((focused.a.y ?? 0) + (focused.b.y ?? 0)) / 2,
+        }
+      : null;
+  const isFocused = (id: string) => !!focus && (focus.a === id || focus.b === id);
+
   return (
     <div ref={containerRef} className={className ?? "h-full w-full"}>
       {!hasData ? (
@@ -145,6 +186,14 @@ export default function Constellation({
           className="h-full w-full"
           aria-label="共鳴の星座"
         >
+          <g
+            style={{
+              transform: zoom
+                ? `scale(${FOCUS_SCALE}) translate(${-zoom.x}px, ${-zoom.y}px)`
+                : "none",
+              transition: "transform 1.2s ease-in-out",
+            }}
+          >
           {layout.links.map((l) => {
             const a = l.source as LayoutNode;
             const b = l.target as LayoutNode;
@@ -187,9 +236,21 @@ export default function Constellation({
             const matched = layout.links.some(
               (l) => l.matched && (l.a === n.id || l.b === n.id),
             );
-            const r = isMe ? 16 : 9 + Math.min(6, n.response_count);
+            const highlighted = isFocused(n.id);
+            const base = isMe ? 16 : 9 + Math.min(6, n.response_count);
+            const r = highlighted ? base * 1.8 : base;
             return (
               <g key={n.id}>
+                {highlighted && (
+                  <circle
+                    cx={n.x}
+                    cy={n.y}
+                    r={r + 14}
+                    fill="none"
+                    stroke="#D85A30"
+                    strokeWidth={4}
+                  />
+                )}
                 {isMe && (
                   <circle
                     cx={n.x}
@@ -204,10 +265,20 @@ export default function Constellation({
                   cx={n.x}
                   cy={n.y}
                   r={r}
-                  fill={isMe ? "#ffffff" : matched ? "#F2A65A" : "#A78BC9"}
-                  fillOpacity={isMe ? 1 : matched ? 0.95 : 0.6}
+                  fill={
+                    highlighted
+                      ? "#D85A30"
+                      : isMe
+                        ? "#ffffff"
+                        : matched
+                          ? "#F2A65A"
+                          : "#A78BC9"
+                  }
+                  fillOpacity={
+                    highlighted ? 1 : isMe ? 1 : matched ? 0.95 : focus ? 0.25 : 0.6
+                  }
                 />
-                {(isMe || matched || large) && (
+                {(isMe || matched || large || highlighted) && (
                   <text
                     x={n.x}
                     y={(n.y ?? 0) + r + (large ? 24 : 20)}
@@ -221,6 +292,7 @@ export default function Constellation({
               </g>
             );
           })}
+          </g>
         </svg>
       )}
     </div>

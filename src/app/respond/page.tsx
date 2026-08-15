@@ -7,27 +7,21 @@ import { getSupabase } from "@/lib/supabase";
 import { getStoredParticipant } from "@/lib/participant";
 import { safeImageUrl } from "@/lib/imageUrl";
 import { tonePalette } from "@/lib/tones";
-import type { DiagnosisQuestion, HintWord, Stimulus, Tone } from "@/lib/types";
+import type { HintWord, Stimulus, Tone } from "@/lib/types";
 
 type ToneStimulus = Stimulus & { tones: Tone };
-type Step = "image" | "feel" | "quiz";
+type Step = "image" | "feel";
 
-// 画像を見る → 感想を記録する → その画像のトーンの診断質問に答える、を
-// 用意された画像の数だけ繰り返すメインフロー
+// 画像を見る → 感想を記録するを、用意された画像の数だけ繰り返すメインフロー。
+// 直感的な反応のテンポを優先するため、途中に診断質問は挿まない
 export default function RespondPage() {
   const router = useRouter();
   const [stimuli, setStimuli] = useState<ToneStimulus[] | null>(null);
   const [hintWords, setHintWords] = useState<HintWord[]>([]);
-  const [questions, setQuestions] = useState<DiagnosisQuestion[]>([]);
-  const [answeredQuestionIds, setAnsweredQuestionIds] = useState<Set<string>>(
-    new Set(),
-  );
   const [index, setIndex] = useState(0);
   const [step, setStep] = useState<Step>("image");
   const [selectedWords, setSelectedWords] = useState<string[]>([]);
   const [freeText, setFreeText] = useState("");
-  const [choices, setChoices] = useState<Record<string, "a" | "b">>({});
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [meId, setMeId] = useState<string | null>(null);
 
@@ -39,62 +33,29 @@ export default function RespondPage() {
     }
     (async () => {
       const supabase = getSupabase();
-      const [
-        { data: stims },
-        { data: words },
-        { data: qs },
-        { data: myResponses },
-        { data: myAnswers },
-      ] = await Promise.all([
-        supabase
-          .from("stimuli")
-          .select("*, tones(*)")
-          .eq("is_active", true),
-        supabase.from("hint_words").select("*").order("sort_order"),
-        supabase.from("diagnosis_questions").select("*").order("sort_order"),
-        supabase
-          .from("stimulus_responses")
-          .select("stimulus_id")
-          .eq("participant_id", participant.id),
-        supabase
-          .from("diagnosis_answers")
-          .select("question_id")
-          .eq("participant_id", participant.id),
-      ]);
+      const [{ data: stims }, { data: words }, { data: myResponses }] =
+        await Promise.all([
+          supabase.from("stimuli").select("*, tones(*)").eq("is_active", true),
+          supabase.from("hint_words").select("*").order("sort_order"),
+          supabase
+            .from("stimulus_responses")
+            .select("stimulus_id")
+            .eq("participant_id", participant.id),
+        ]);
       const list = ((stims ?? []) as ToneStimulus[]).sort(
         (a, b) =>
           a.tones.sort_order - b.tones.sort_order ||
           a.created_at.localeCompare(b.created_at),
       );
       const responded = new Set((myResponses ?? []).map((r) => r.stimulus_id));
-      const answered = new Set((myAnswers ?? []).map((a) => a.question_id));
-      const allQuestions = (qs ?? []) as DiagnosisQuestion[];
 
-      // 途中から再開できるように、未完了の最初の刺激とステップを探す
-      let resumeIndex = list.length;
-      let resumeStep: Step = "image";
-      for (let i = 0; i < list.length; i++) {
-        const toneQs = allQuestions.filter(
-          (q) => q.tone_id === list[i].tone_id,
-        );
-        if (!responded.has(list[i].id)) {
-          resumeIndex = i;
-          resumeStep = "image";
-          break;
-        }
-        if (toneQs.some((q) => !answered.has(q.id))) {
-          resumeIndex = i;
-          resumeStep = "quiz";
-          break;
-        }
-      }
+      // 途中から再開できるように、まだ感想を記録していない最初の画像を探す
+      const resumeIndex = list.findIndex((s) => !responded.has(s.id));
 
       setHintWords((words ?? []) as HintWord[]);
-      setQuestions(allQuestions);
-      setAnsweredQuestionIds(answered);
       setStimuli(list);
-      setIndex(resumeIndex);
-      setStep(resumeStep);
+      setIndex(resumeIndex === -1 ? list.length : resumeIndex);
+      setStep("image");
     })();
   }, [router]);
 
@@ -109,13 +70,10 @@ export default function RespondPage() {
     );
   };
 
-  const advance = (answered: Set<string>) => {
+  const advance = () => {
     if (!stimuli) return;
-    // 次の刺激へ。トーンの質問が回答済みならquizはスキップされる（image→feel→quiz判定）
     setSelectedWords([]);
     setFreeText("");
-    setChoices({});
-    setAnsweredQuestionIds(answered);
     setIndex(index + 1);
     setStep("image");
   };
@@ -145,47 +103,7 @@ export default function RespondPage() {
         ),
       );
 
-    const toneQs = questions.filter((q) => q.tone_id === stimulus.tone_id);
-    if (toneQs.some((q) => !answeredQuestionIds.has(q.id))) {
-      setStep("quiz");
-    } else {
-      // このトーンの質問は回答済み（同じトーンの画像が複数ある場合）
-      advance(answeredQuestionIds);
-    }
-  };
-
-  const submitQuiz = async () => {
-    if (!stimuli) return;
-    const stimulus = stimuli[index];
-    const participant = getStoredParticipant()!;
-    const toneQs = questions.filter(
-      (q) => q.tone_id === stimulus.tone_id && !answeredQuestionIds.has(q.id),
-    );
-    if (toneQs.some((q) => !choices[q.id])) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const rows = toneQs.map((q) => ({
-        participant_id: participant.id,
-        question_id: q.id,
-        choice: choices[q.id],
-      }));
-      const { error } = await getSupabase()
-        .from("diagnosis_answers")
-        .insert(rows);
-      if (error) throw error;
-      // 共鳴判定は待たない（結果はRealtimeで届く）
-      void getSupabase().functions.invoke("check-resonance", {
-        body: { participant_id: participant.id },
-      });
-      const answered = new Set(answeredQuestionIds);
-      toneQs.forEach((q) => answered.add(q.id));
-      advance(answered);
-    } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
-    } finally {
-      setSubmitting(false);
-    }
+    advance();
   };
 
   if (!stimuli) {
@@ -224,12 +142,8 @@ export default function RespondPage() {
   const palette = tonePalette(toneLabel);
   const stimulusImageUrl = safeImageUrl(stimulus.image_url);
   const toneWords = hintWords.filter((w) => w.tone_id === stimulus.tone_id);
-  const toneQuestions = questions.filter(
-    (q) => q.tone_id === stimulus.tone_id && !answeredQuestionIds.has(q.id),
-  );
   const canSubmitFeelings =
     selectedWords.length > 0 || freeText.trim().length > 0;
-  const canSubmitQuiz = toneQuestions.every((q) => choices[q.id]);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col gap-5 px-6 py-8">
@@ -237,7 +151,6 @@ export default function RespondPage() {
         <span>
           {step === "image" && "この画像をじっくり見てください"}
           {step === "feel" && "この画像を見て感じたことは？"}
-          {step === "quiz" && `「${toneLabel}」についての質問`}
         </span>
         <span>
           {index + 1} / {stimuli.length}
@@ -326,55 +239,12 @@ export default function RespondPage() {
 
           <button
             onClick={submitFeelings}
-            disabled={submitting || !canSubmitFeelings}
+            disabled={!canSubmitFeelings}
             className="rounded-xl bg-gradient-to-r from-violet-500 to-rose-400 px-4 py-3 text-lg font-bold text-white disabled:opacity-40"
           >
-            {submitting ? "送信中..." : "この感覚を記録する"}
-          </button>
-        </>
-      )}
-
-      {step === "quiz" && (
-        <>
-          {toneQuestions.map((q) => (
-            <div
-              key={q.id}
-              className="flex flex-col gap-3 rounded-2xl border border-white/10 p-4"
-            >
-              <p className="text-sm font-bold">{q.prompt}</p>
-              {(["a", "b"] as const).map((c) => {
-                const active = choices[q.id] === c;
-                return (
-                  <button
-                    key={c}
-                    onClick={() =>
-                      setChoices((prev) => ({ ...prev, [q.id]: c }))
-                    }
-                    className={`rounded-xl border px-4 py-3 text-left text-sm transition-all ${
-                      active
-                        ? "border-violet-400 bg-violet-500/20 font-bold"
-                        : "border-white/15 text-white/70"
-                    }`}
-                  >
-                    {c === "a" ? q.text_a : q.text_b}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-
-          {error && <p className="text-sm text-rose-400">{error}</p>}
-
-          <button
-            onClick={submitQuiz}
-            disabled={submitting || !canSubmitQuiz}
-            className="rounded-xl bg-gradient-to-r from-violet-500 to-rose-400 px-4 py-3 text-lg font-bold text-white disabled:opacity-40"
-          >
-            {submitting
-              ? "送信中..."
-              : index + 1 < stimuli.length
-                ? "次の画像へ"
-                : "完了する"}
+            {index + 1 < stimuli.length
+              ? "この感覚を記録して次へ"
+              : "この感覚を記録して完了"}
           </button>
         </>
       )}
