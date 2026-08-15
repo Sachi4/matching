@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
-import { SENSE_TYPES } from "@/lib/diagnosis";
+import { tonePalette } from "@/lib/tones";
 import type { Match } from "@/lib/types";
 
 type FeedItem = Match & {
   nickname_a: string;
   nickname_b: string;
-  palette_a: string[];
-  palette_b: string[];
+  tone_label: string | null;
   isNew?: boolean;
 };
 
@@ -20,28 +19,23 @@ export default function ResonanceFeed({ large }: { large?: boolean }) {
   const enrich = useCallback(async (match: Match): Promise<FeedItem> => {
     const supabase = getSupabase();
     const ids = [match.participant_id_a, match.participant_id_b];
-    const [{ data: participants }, { data: diagnoses }] = await Promise.all([
+    const [{ data: participants }, { data: tone }] = await Promise.all([
       supabase.from("participants").select("id, nickname").in("id", ids),
-      supabase
-        .from("diagnosis_scores")
-        .select("participant_id, type_key")
-        .in("participant_id", ids)
-        .order("created_at", { ascending: false }),
+      match.decisive_tone_id
+        ? supabase
+            .from("tones")
+            .select("label")
+            .eq("id", match.decisive_tone_id)
+            .single()
+        : Promise.resolve({ data: null }),
     ]);
     const nickname = (id: string) =>
       participants?.find((p) => p.id === id)?.nickname ?? "？？？";
-    const palette = (id: string) => {
-      const key = diagnoses?.find((d) => d.participant_id === id)?.type_key;
-      return key && SENSE_TYPES[key]
-        ? SENSE_TYPES[key].palette
-        : ["#A78BC9", "#7FB6D9", "#F5D5C8"];
-    };
     return {
       ...match,
       nickname_a: nickname(match.participant_id_a),
       nickname_b: nickname(match.participant_id_b),
-      palette_a: palette(match.participant_id_a),
-      palette_b: palette(match.participant_id_b),
+      tone_label: tone?.label ?? null,
     };
   }, []);
 
@@ -102,33 +96,37 @@ export default function ResonanceFeed({ large }: { large?: boolean }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {items.map((item) => (
-        <div
-          key={item.id}
-          className={`rounded-2xl p-[2px] ${item.isNew ? "animate-pop-in" : ""}`}
-          style={{
-            background: `linear-gradient(120deg, ${item.palette_a[0]}, ${item.palette_a[1]}, ${item.palette_b[1]}, ${item.palette_b[0]})`,
-          }}
-        >
+      {items.map((item) => {
+        const palette = tonePalette(item.tone_label);
+        return (
           <div
-            className={`rounded-2xl bg-[#16141f]/90 px-5 text-center ${large ? "py-8" : "py-5"}`}
+            key={item.id}
+            className={`rounded-2xl p-[2px] ${item.isNew ? "animate-pop-in" : ""}`}
+            style={{
+              background: `linear-gradient(120deg, ${palette[0]}, ${palette[1]}, ${palette[2]})`,
+            }}
           >
-            {item.reaction_phrase && (
-              <p className={`font-bold ${large ? "text-3xl" : "text-xl"}`}>
-                「{item.reaction_phrase}」
-              </p>
-            )}
-            <p
-              className={`mt-2 text-white/80 ${large ? "text-xl" : "text-sm"}`}
+            <div
+              className={`rounded-2xl bg-[#16141f]/90 px-5 text-center ${large ? "py-8" : "py-5"}`}
             >
-              {item.nickname_a} × {item.nickname_b}
-            </p>
-            <p className="mt-1 text-xs text-white/40">
-              共鳴度 {(Number(item.score) * 100).toFixed(0)}%
-            </p>
+              {item.reaction_phrase && (
+                <p className={`font-bold ${large ? "text-3xl" : "text-xl"}`}>
+                  「{item.reaction_phrase}」
+                </p>
+              )}
+              <p
+                className={`mt-2 text-white/80 ${large ? "text-xl" : "text-sm"}`}
+              >
+                {item.nickname_a} × {item.nickname_b}
+              </p>
+              <p className="mt-1 text-xs text-white/40">
+                共鳴度 {(Number(item.score) * 100).toFixed(0)}%
+                {item.tone_label && ` ・ 決め手は「${item.tone_label}」`}
+              </p>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

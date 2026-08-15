@@ -1,21 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800">
   <defs>
-    <linearGradient id="bg3" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#DDE7E4"/>
-      <stop offset="100%" stop-color="#9BB8C4"/>
-    </linearGradient>
+    <radialGradient id="g1" cx="50%" cy="50%" r="75%">
+      <stop offset="0%" stop-color="#E86A5B"/>
+      <stop offset="55%" stop-color="#B33951"/>
+      <stop offset="100%" stop-color="#4A1220"/>
+    </radialGradient>
+    <radialGradient id="g2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFD08A" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#E86A5B" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-  <rect width="800" height="800" fill="url(#bg3)"/>
-  <g opacity="0.7">
-    <ellipse cx="400" cy="620" rx="360" ry="60" fill="#7FA8B8" opacity="0.5"/>
-    <ellipse cx="400" cy="640" rx="300" ry="40" fill="#5C8A9E" opacity="0.4"/>
-  </g>
-  <circle cx="400" cy="330" r="150" fill="none" stroke="#5A7A5C" stroke-width="3" opacity="0.7"/>
-  <circle cx="400" cy="330" r="110" fill="none" stroke="#5A7A5C" stroke-width="2" opacity="0.5"/>
-  <circle cx="400" cy="330" r="70" fill="#9BD4C0" opacity="0.5"/>
-  <circle cx="400" cy="330" r="26" fill="#F8F6F0" opacity="0.9"/>
-  <path d="M120 460 C 220 430, 300 480, 400 460 S 620 430, 690 470" stroke="#8B9DC3" stroke-width="2" fill="none" opacity="0.6"/>
-  <circle cx="180" cy="180" r="5" fill="#5A7A5C" opacity="0.5"/>
-  <circle cx="630" cy="150" r="7" fill="#8B9DC3" opacity="0.5"/>
-  <circle cx="560" cy="520" r="4" fill="#5A7A5C" opacity="0.4"/>
+  <rect width="800" height="800" fill="url(#g1)"/>
+  <circle cx="400" cy="400" r="180" fill="url(#g2)"/>
+  <path d="M400 400 L120 180 L260 340 Z" fill="#8C2F44" opacity="0.85"/>
+  <path d="M400 400 L700 140 L560 330 Z" fill="#8C2F44" opacity="0.85"/>
+  <path d="M400 400 L90 520 L280 480 Z" fill="#6E2436" opacity="0.85"/>
+  <path d="M400 400 L710 560 L540 490 Z" fill="#6E2436" opacity="0.85"/>
+  <path d="M400 400 L300 720 L400 560 Z" fill="#57192A" opacity="0.85"/>
+  <path d="M400 400 L520 700 L440 540 Z" fill="#57192A" opacity="0.85"/>
+  <path d="M140 120 L180 200 L100 190 Z" fill="#FFB37A" opacity="0.7"/>
+  <path d="M660 640 L700 720 L620 700 Z" fill="#FFB37A" opacity="0.6"/>
+  <path d="M640 90 L668 150 L600 140 Z" fill="#FFD08A" opacity="0.6"/>
 </svg>

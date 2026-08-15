@@ -4,33 +4,52 @@ export type Participant = {
   created_at: string;
 };
 
+export type Tone = {
+  id: string;
+  label: string;
+  sort_order: number;
+};
+
 export type Stimulus = {
   id: string;
-  stimulus_type: string;
+  tone_id: string;
   image_url: string | null;
-  emotional_tone_label: string | null;
   is_active: boolean;
-  sort_order: number;
+  stimulus_type: string;
   created_at: string;
+};
+
+export type HintWord = {
+  id: string;
+  tone_id: string;
+  word: string;
+  sort_order: number;
+};
+
+export type DiagnosisQuestion = {
+  id: string;
+  tone_id: string;
+  prompt: string;
+  text_a: string;
+  text_b: string;
+  axis: string;
+  sort_order: number;
 };
 
 export type StimulusResponse = {
   id: string;
   participant_id: string;
   stimulus_id: string;
-  response_text: string;
-  selected_tags: string[];
+  hint_words_selected: string[];
+  free_text: string;
   created_at: string;
 };
 
-export type DiagnosisScore = {
+export type DiagnosisAnswer = {
   id: string;
   participant_id: string;
-  type_key: string;
-  type_name: string;
-  axis_e: number;
-  axis_n: number;
-  axis_i: number;
+  question_id: string;
+  choice: "a" | "b";
   created_at: string;
 };
 
@@ -38,8 +57,8 @@ export type Match = {
   id: string;
   participant_id_a: string;
   participant_id_b: string;
-  stimulus_id: string | null;
   score: number;
+  decisive_tone_id: string | null;
   reaction_phrase: string | null;
   created_at: string;
 };

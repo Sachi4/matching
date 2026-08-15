@@ -1,23 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800">
   <defs>
-    <radialGradient id="g1" cx="35%" cy="30%" r="70%">
-      <stop offset="0%" stop-color="#F5D5C8"/>
-      <stop offset="55%" stop-color="#C7B8E0"/>
-      <stop offset="100%" stop-color="#3F4E7A"/>
+    <radialGradient id="g1" cx="50%" cy="65%" r="80%">
+      <stop offset="0%" stop-color="#FDF0C8"/>
+      <stop offset="45%" stop-color="#F2A65A"/>
+      <stop offset="100%" stop-color="#B5486B"/>
     </radialGradient>
     <radialGradient id="g2" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#F2D14E" stop-opacity="0.9"/>
+      <stop offset="0%" stop-color="#FFF6D6" stop-opacity="0.95"/>
       <stop offset="100%" stop-color="#F2D14E" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="g3" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#7FB6D9" stop-opacity="0.8"/>
-      <stop offset="100%" stop-color="#7FB6D9" stop-opacity="0"/>
-    </radialGradient>
+    <linearGradient id="g3" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#F2D14E" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#FFF6D6" stop-opacity="0.9"/>
+    </linearGradient>
   </defs>
   <rect width="800" height="800" fill="url(#g1)"/>
-  <ellipse cx="240" cy="560" rx="300" ry="220" fill="url(#g3)"/>
-  <ellipse cx="560" cy="220" rx="260" ry="200" fill="url(#g2)"/>
-  <path d="M0 520 C 200 440, 350 620, 560 540 S 800 460, 800 560 L 800 800 L 0 800 Z" fill="#3F4E7A" opacity="0.5"/>
-  <path d="M0 620 C 240 560, 420 700, 800 620 L 800 800 L 0 800 Z" fill="#2A3355" opacity="0.6"/>
-  <circle cx="580" cy="240" r="70" fill="#FDF6EC" opacity="0.85"/>
+  <circle cx="400" cy="470" r="240" fill="url(#g2)"/>
+  <path d="M380 700 L400 240 L420 700 Z" fill="url(#g3)" opacity="0.9"/>
+  <path d="M250 720 L300 340 L340 720 Z" fill="url(#g3)" opacity="0.6"/>
+  <path d="M470 720 L510 320 L550 720 Z" fill="url(#g3)" opacity="0.6"/>
+  <circle cx="400" cy="230" r="46" fill="#FFF9E8" opacity="0.95"/>
+  <circle cx="298" cy="320" r="20" fill="#FFF3C9" opacity="0.8"/>
+  <circle cx="512" cy="300" r="24" fill="#FFF3C9" opacity="0.8"/>
+  <circle cx="200" cy="180" r="10" fill="#FFF3C9" opacity="0.7"/>
+  <circle cx="620" cy="160" r="14" fill="#FFF3C9" opacity="0.7"/>
 </svg>

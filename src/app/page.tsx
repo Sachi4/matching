@@ -30,7 +30,7 @@ export default function RegisterPage() {
         .single();
       if (error) throw error;
       storeParticipant({ id: data.id, nickname: data.nickname });
-      router.push("/diagnosis");
+      router.push("/respond");
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
       setSubmitting(false);
