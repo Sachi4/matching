@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import CollectiveCanvas from "@/components/CollectiveCanvas";
 import Constellation from "@/components/Constellation";
+import ResonanceBurst from "@/components/ResonanceBurst";
 import ResonanceFeed from "@/components/ResonanceFeed";
 import { getStoredParticipant } from "@/lib/participant";
 import { getSupabase } from "@/lib/supabase";
@@ -72,16 +72,6 @@ export default function FeedPage() {
         </div>
       </section>
 
-      <section>
-        <p className="text-sm text-white/60">みんなの感覚が混ざるキャンバス</p>
-        <p className="mb-2 text-xs text-white/35">
-          共鳴とは別に、この場の全員の感想の色が少しずつ足されていく絵です。
-        </p>
-        <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#12101a]">
-          <CollectiveCanvas className="h-64 w-full" />
-        </div>
-      </section>
-
       {testMode && (
         <Link
           href="/admin/test"
@@ -90,6 +80,8 @@ export default function FeedPage() {
           テストモード：デバッグUIを開く
         </Link>
       )}
+
+      <ResonanceBurst meId={meId} />
     </main>
   );
 }

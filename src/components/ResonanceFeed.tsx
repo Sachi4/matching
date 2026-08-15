@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Sigil from "@/components/Sigil";
 import { getSupabase } from "@/lib/supabase";
+import { loadMatchDetail, type MatchSign } from "@/lib/matchDetail";
 import { tonePalette } from "@/lib/tones";
 import type { Match } from "@/lib/types";
 
 type FeedItem = Match & {
-  nickname_a: string;
-  nickname_b: string;
+  signs: [MatchSign, MatchSign];
   tone_label: string | null;
   isNew?: boolean;
 };
@@ -36,26 +37,8 @@ export default function ResonanceFeed({
   const [items, setItems] = useState<FeedItem[]>([]);
 
   const enrich = useCallback(async (match: Match): Promise<FeedItem> => {
-    const supabase = getSupabase();
-    const ids = [match.participant_id_a, match.participant_id_b];
-    const [{ data: participants }, { data: tone }] = await Promise.all([
-      supabase.from("participants").select("id, nickname").in("id", ids),
-      match.decisive_tone_id
-        ? supabase
-            .from("tones")
-            .select("label")
-            .eq("id", match.decisive_tone_id)
-            .single()
-        : Promise.resolve({ data: null }),
-    ]);
-    const nickname = (id: string) =>
-      participants?.find((p) => p.id === id)?.nickname ?? "？？？";
-    return {
-      ...match,
-      nickname_a: nickname(match.participant_id_a),
-      nickname_b: nickname(match.participant_id_b),
-      tone_label: tone?.label ?? null,
-    };
+    const detail = await loadMatchDetail(getSupabase(), match);
+    return { ...match, signs: detail.signs, tone_label: detail.toneLabel };
   }, []);
 
   useEffect(() => {
@@ -173,17 +156,43 @@ export default function ResonanceFeed({
                   あなたの共鳴
                 </p>
               )}
+
+              {/* 2人の印が重なる。一意性は生成AIの反応名ではなく、この印が担う */}
+              <div
+                className={`relative mx-auto ${large ? "h-28 w-44" : "h-16 w-28"}`}
+              >
+                <div className="absolute inset-y-0 left-0 aspect-square mix-blend-screen">
+                  <Sigil seed={item.signs[0].seed} toneLabel={item.tone_label} />
+                </div>
+                <div className="absolute inset-y-0 right-0 aspect-square mix-blend-screen">
+                  <Sigil seed={item.signs[1].seed} toneLabel={item.tone_label} />
+                </div>
+              </div>
+
+              <div
+                className={`mt-2 flex flex-col gap-0.5 ${large ? "text-lg" : "text-sm"}`}
+              >
+                {item.signs.map((s) => (
+                  <p key={s.participantId} className="text-white/85">
+                    <span className="font-bold">{s.nickname}</span>
+                    {s.hintWords.length > 0 && (
+                      <span className="text-white/55">
+                        {" "}
+                        — {s.hintWords.join("・")}
+                      </span>
+                    )}
+                  </p>
+                ))}
+              </div>
+
               {item.reaction_phrase && (
-                <p className={`font-bold ${large ? "text-3xl" : "text-xl"}`}>
+                <p
+                  className={`mt-2 text-white/40 ${large ? "text-sm" : "text-[11px]"}`}
+                >
                   「{item.reaction_phrase}」
                 </p>
               )}
-              <p
-                className={`mt-2 text-white/80 ${large ? "text-xl" : "text-sm"}`}
-              >
-                {item.nickname_a} × {item.nickname_b}
-              </p>
-              <p className="mt-1 text-xs text-white/40">
+              <p className="mt-1 text-[11px] text-white/35">
                 共鳴度 {(Number(item.score) * 100).toFixed(0)}%
                 {item.tone_label && ` ・ 決め手は「${item.tone_label}」`}
               </p>

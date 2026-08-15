@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import ResonanceBurst from "@/components/ResonanceBurst";
 import { getSupabase } from "@/lib/supabase";
 import { getStoredParticipant } from "@/lib/participant";
 import { safeImageUrl } from "@/lib/imageUrl";
@@ -9,7 +10,6 @@ import { tonePalette } from "@/lib/tones";
 import type { DiagnosisQuestion, HintWord, Stimulus, Tone } from "@/lib/types";
 
 type ToneStimulus = Stimulus & { tones: Tone };
-type NewMatch = { id: string; score: number; reaction_phrase: string | null };
 type Step = "image" | "feel" | "quiz";
 
 // 画像を見る → 感想を記録する → その画像のトーンの診断質問に答える、を
@@ -29,7 +29,7 @@ export default function RespondPage() {
   const [choices, setChoices] = useState<Record<string, "a" | "b">>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [newMatches, setNewMatches] = useState<NewMatch[]>([]);
+  const [meId, setMeId] = useState<string | null>(null);
 
   useEffect(() => {
     const participant = getStoredParticipant();
@@ -98,48 +98,9 @@ export default function RespondPage() {
     })();
   }, [router]);
 
-  // 自分に関わる共鳴が生まれたら、後からRealtimeで受け取ってポップアップする
+  // 自分に関わる共鳴が生まれたら、後からRealtimeで受け取ってバースト演出を出す
   useEffect(() => {
-    const participant = getStoredParticipant();
-    if (!participant) return;
-    const supabase = getSupabase();
-    const channel = supabase
-      .channel("my-matches")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "matches" },
-        (payload) => {
-          const match = payload.new as {
-            id: string;
-            participant_id_a: string;
-            participant_id_b: string;
-            score: number;
-            reaction_phrase: string | null;
-          };
-          if (
-            match.participant_id_a !== participant.id &&
-            match.participant_id_b !== participant.id
-          ) {
-            return;
-          }
-          setNewMatches((prev) =>
-            prev.some((m) => m.id === match.id)
-              ? prev
-              : [
-                  {
-                    id: match.id,
-                    score: match.score,
-                    reaction_phrase: match.reaction_phrase,
-                  },
-                  ...prev,
-                ],
-          );
-        },
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    setMeId(getStoredParticipant()?.id ?? null);
   }, []);
 
   const toggleWord = (word: string) => {
@@ -253,9 +214,7 @@ export default function RespondPage() {
         >
           共鳴フィードを見る
         </button>
-        {newMatches.length > 0 && (
-          <MatchPopup key={newMatches[0].id} matches={newMatches} />
-        )}
+        <ResonanceBurst meId={meId} />
       </main>
     );
   }
@@ -420,38 +379,7 @@ export default function RespondPage() {
         </>
       )}
 
-      {newMatches.length > 0 && (
-        <MatchPopup key={newMatches[0].id} matches={newMatches} />
-      )}
+      <ResonanceBurst meId={meId} />
     </main>
-  );
-}
-
-function MatchPopup({ matches }: { matches: NewMatch[] }) {
-  const [visible, setVisible] = useState(true);
-  if (!visible) return null;
-  return (
-    <div className="fixed inset-x-0 bottom-6 z-50 mx-auto max-w-md px-6">
-      <div className="animate-pop-in rounded-2xl bg-gradient-to-r from-violet-500 to-rose-400 p-[2px] shadow-2xl">
-        <div className="flex items-center justify-between gap-3 rounded-2xl bg-[#16141f] px-5 py-4">
-          <div>
-            <p className="text-sm font-bold">共鳴が生まれました！</p>
-            <p className="text-xs text-white/60">
-              {matches[0].reaction_phrase
-                ? `「${matches[0].reaction_phrase}」`
-                : ""}{" "}
-              フィードを見てみましょう
-            </p>
-          </div>
-          <button
-            onClick={() => setVisible(false)}
-            className="text-white/40"
-            aria-label="閉じる"
-          >
-            ✕
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

@@ -45,3 +45,135 @@ body {
 .animate-resonance-line {
   animation: resonance-line 2.4s ease-in-out infinite;
 }
+
+/* 共鳴が生まれた瞬間のバースト演出 */
+@keyframes burst-backdrop {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-burst-backdrop {
+  animation: burst-backdrop 6s ease-in-out both;
+}
+
+@keyframes burst-ring {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.15);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+
+.animate-burst-ring {
+  animation: burst-ring 2.2s cubic-bezier(0.16, 0.84, 0.44, 1) infinite;
+}
+
+@keyframes sigil-merge-left {
+  0% {
+    opacity: 0;
+    transform: translateX(-70%) scale(0.55) rotate(-25deg);
+  }
+  45% {
+    opacity: 1;
+    transform: translateX(-38%) scale(1.05) rotate(0deg);
+  }
+  100% {
+    opacity: 0.95;
+    transform: translateX(-16%) scale(1) rotate(0deg);
+  }
+}
+
+@keyframes sigil-merge-right {
+  0% {
+    opacity: 0;
+    transform: translateX(70%) scale(0.55) rotate(25deg);
+  }
+  45% {
+    opacity: 1;
+    transform: translateX(38%) scale(1.05) rotate(0deg);
+  }
+  100% {
+    opacity: 0.95;
+    transform: translateX(16%) scale(1) rotate(0deg);
+  }
+}
+
+.animate-sigil-left {
+  animation: sigil-merge-left 1.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.animate-sigil-right {
+  animation: sigil-merge-right 1.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes burst-particle {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) scale(1.1);
+  }
+}
+
+.animate-burst-particle {
+  animation: burst-particle 1.8s ease-out both;
+}
+
+@keyframes burst-caption {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-burst-caption {
+  animation: burst-caption 0.8s 1.1s ease-out both;
+}
+
+@keyframes tile-appear {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-tile-appear {
+  animation: tile-appear 0.9s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-burst-ring,
+  .animate-burst-particle,
+  .animate-sigil-left,
+  .animate-sigil-right,
+  .animate-tile-appear {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}

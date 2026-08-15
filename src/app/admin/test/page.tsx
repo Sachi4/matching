@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import ResonanceBurst from "@/components/ResonanceBurst";
 import { getSupabase } from "@/lib/supabase";
 import {
   TEST_FIXTURES,
@@ -211,6 +212,9 @@ export default function TestModePage() {
           )}
         </div>
       </section>
+
+      {/* この画面でもバースト演出を確認できるようにしておく（当日のリハーサル用） */}
+      <ResonanceBurst />
     </main>
   );
 }
