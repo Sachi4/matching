@@ -84,6 +84,8 @@ export default function CollectiveCanvas({
     const dpr = window.devicePixelRatio || 1;
     canvas.width = canvas.clientWidth * dpr;
     canvas.height = canvas.clientHeight * dpr;
+    // サイズ設定でビットマップが消えるため、描画済み記録もリセットする
+    drawnIds.current = new Set();
 
     const drawIfNew = (row: ResponseRow) => {
       if (drawnIds.current.has(row.id)) return;

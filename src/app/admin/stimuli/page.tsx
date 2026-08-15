@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
+import { safeImageUrl } from "@/lib/imageUrl";
 import type { Stimulus } from "@/lib/types";
 
 // 運営用: 刺激（画像）の追加・表示切替・削除
@@ -25,10 +26,14 @@ export default function AdminStimuliPage() {
   }, [load]);
 
   const add = async () => {
-    if (!imageUrl.trim()) return;
+    const url = safeImageUrl(imageUrl.trim());
+    if (!url) {
+      setError("画像URLは /path または http(s):// 形式で指定してください");
+      return;
+    }
     const { error } = await getSupabase().from("stimuli").insert({
       stimulus_type: "image",
-      image_url: imageUrl.trim(),
+      image_url: url,
       emotional_tone_label: toneLabel.trim() || null,
       sort_order: stimuli.length + 1,
     });
@@ -95,10 +100,10 @@ export default function AdminStimuliPage() {
             key={s.id}
             className="flex items-center gap-4 rounded-2xl border border-white/10 p-3"
           >
-            {s.image_url && (
+            {safeImageUrl(s.image_url) && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={s.image_url}
+                src={safeImageUrl(s.image_url)!}
                 alt=""
                 className="h-16 w-16 rounded-lg object-cover"
               />

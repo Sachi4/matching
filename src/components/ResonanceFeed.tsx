@@ -56,7 +56,18 @@ export default function ResonanceFeed({ large }: { large?: boolean }) {
         .order("created_at", { ascending: false })
         .limit(30);
       const enriched = await Promise.all((data ?? []).map(enrich));
-      if (!cancelled) setItems(enriched);
+      if (!cancelled) {
+        // 読み込み中にRealtimeで届いたものを消さないよう、idでマージする
+        setItems((prev) => {
+          const merged = [...prev];
+          for (const item of enriched) {
+            if (!merged.some((i) => i.id === item.id)) merged.push(item);
+          }
+          return merged.sort((a, b) =>
+            b.created_at.localeCompare(a.created_at),
+          );
+        });
+      }
     })();
 
     const channel = supabase

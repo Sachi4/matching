@@ -4,11 +4,18 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const EMBEDDING_DIM = 1536;
 
+// 本番ではALLOWED_ORIGINにフロントのオリジンを設定して呼び出し元を制限する
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+const MAX_TEXT_LENGTH = 500;
+const MAX_TAGS = 20;
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -122,6 +129,31 @@ Deno.serve(async (req) => {
         { error: "participant_id, stimulus_id, response_text は必須です" },
         400,
       );
+    }
+    if (
+      typeof participant_id !== "string" ||
+      !UUID_RE.test(participant_id) ||
+      typeof stimulus_id !== "string" ||
+      !UUID_RE.test(stimulus_id)
+    ) {
+      return json({ error: "participant_id / stimulus_id が不正です" }, 400);
+    }
+    if (
+      typeof response_text !== "string" ||
+      response_text.length > MAX_TEXT_LENGTH
+    ) {
+      return json(
+        { error: `response_text は${MAX_TEXT_LENGTH}文字以内の文字列にしてください` },
+        400,
+      );
+    }
+    if (
+      selected_tags != null &&
+      (!Array.isArray(selected_tags) ||
+        selected_tags.length > MAX_TAGS ||
+        selected_tags.some((t) => typeof t !== "string" || t.length > 30))
+    ) {
+      return json({ error: "selected_tags が不正です" }, 400);
     }
 
     const supabase = createClient(

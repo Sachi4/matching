@@ -142,6 +142,15 @@ as $$
   order by resonance desc;
 $$;
 
+-- 権限: RLSポリシーに加えてテーブルレベルのGRANTが必要
+grant usage on schema public to anon, authenticated;
+grant select, insert on public.participants to anon, authenticated;
+grant select, insert, update, delete on public.stimuli to anon, authenticated;
+grant select, insert on public.stimulus_responses to anon, authenticated;
+grant select, insert on public.diagnosis_scores to anon, authenticated;
+grant select on public.matches to anon, authenticated;
+grant select on public.app_settings to anon, authenticated;
+
 -- RLS: イベント用の匿名アプリのため、anonに読み書きを許可（認証はスコープ外）
 alter table public.participants enable row level security;
 alter table public.stimuli enable row level security;

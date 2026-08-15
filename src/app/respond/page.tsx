@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { getStoredParticipant } from "@/lib/participant";
 import { FEELING_TAGS } from "@/lib/tags";
+import { safeImageUrl } from "@/lib/imageUrl";
 import type { Stimulus } from "@/lib/types";
 
 type NewMatch = { id: string; score: number; reaction_phrase: string | null };
@@ -79,9 +80,7 @@ export default function RespondPage() {
         },
       );
       if (error) throw error;
-      if (data?.matches?.length) {
-        setNewMatches(data.matches);
-      }
+      setNewMatches(data?.matches ?? []);
       setAnsweredIds((prev) => new Set(prev).add(stimulus.id));
       setSelectedTags([]);
       setFreeText("");
@@ -119,12 +118,15 @@ export default function RespondPage() {
         >
           共鳴フィードを見る
         </button>
-        {newMatches.length > 0 && <MatchPopup matches={newMatches} />}
+        {newMatches.length > 0 && (
+          <MatchPopup key={newMatches[0].id} matches={newMatches} />
+        )}
       </main>
     );
   }
 
   const stimulus = stimuli[index];
+  const stimulusImageUrl = safeImageUrl(stimulus.image_url);
   const canSubmit = selectedTags.length > 0 || freeText.trim().length > 0;
 
   return (
@@ -139,10 +141,10 @@ export default function RespondPage() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-white/10">
-        {stimulus.image_url && (
+        {stimulusImageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={stimulus.image_url}
+            src={stimulusImageUrl}
             alt={stimulus.emotional_tone_label ?? "抽象画像"}
             className="aspect-square w-full object-cover"
           />
@@ -196,7 +198,9 @@ export default function RespondPage() {
         {submitting ? "送信中..." : "この感覚を記録する"}
       </button>
 
-      {newMatches.length > 0 && <MatchPopup matches={newMatches} />}
+      {newMatches.length > 0 && (
+        <MatchPopup key={newMatches[0].id} matches={newMatches} />
+      )}
     </main>
   );
 }
