@@ -62,27 +62,28 @@ export default function ResonanceBurst({ meId, focusPath = "/feed" }: Props) {
   }, [meId]);
 
   const dismiss = useCallback(() => {
-    setQueue((prev) => {
-      const [shown, ...rest] = prev;
-      // 演出のあと、その共鳴が全体のどこで起きたのかを星座UIで見せる
-      if (shown) {
-        requestResonanceFocus(
-          shown.match.participant_id_a,
-          shown.match.participant_id_b,
-        );
-        if (focusPath && rest.length === 0 && pathname !== focusPath) {
-          router.push(focusPath);
-        }
-      }
-      return rest;
-    });
-  }, [focusPath, pathname, router]);
+    const [shown, ...rest] = queue;
+    if (!shown) return;
+    setQueue(rest);
+    // 演出のあと、その共鳴が全体のどこで起きたのかを星座UIで見せる
+    requestResonanceFocus(
+      shown.match.participant_id_a,
+      shown.match.participant_id_b,
+    );
+    if (focusPath && rest.length === 0 && pathname !== focusPath) {
+      router.push(focusPath);
+    }
+  }, [focusPath, pathname, queue, router]);
+
+  // 表示中の演出は最後まで見せる。待ち行列が動いてもタイマーは張り直さない
+  const dismissRef = useRef(dismiss);
+  dismissRef.current = dismiss;
 
   useEffect(() => {
     if (!current) return;
-    const timer = setTimeout(dismiss, DURATION);
+    const timer = setTimeout(() => dismissRef.current(), DURATION);
     return () => clearTimeout(timer);
-  }, [current, dismiss]);
+  }, [current]);
 
   if (!current) return null;
   return <Burst key={current.match.id} detail={current} onClose={dismiss} />;
