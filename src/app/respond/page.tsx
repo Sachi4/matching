@@ -98,6 +98,50 @@ export default function RespondPage() {
     })();
   }, [router]);
 
+  // 自分に関わる共鳴が生まれたら、後からRealtimeで受け取ってポップアップする
+  useEffect(() => {
+    const participant = getStoredParticipant();
+    if (!participant) return;
+    const supabase = getSupabase();
+    const channel = supabase
+      .channel("my-matches")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "matches" },
+        (payload) => {
+          const match = payload.new as {
+            id: string;
+            participant_id_a: string;
+            participant_id_b: string;
+            score: number;
+            reaction_phrase: string | null;
+          };
+          if (
+            match.participant_id_a !== participant.id &&
+            match.participant_id_b !== participant.id
+          ) {
+            return;
+          }
+          setNewMatches((prev) =>
+            prev.some((m) => m.id === match.id)
+              ? prev
+              : [
+                  {
+                    id: match.id,
+                    score: match.score,
+                    reaction_phrase: match.reaction_phrase,
+                  },
+                  ...prev,
+                ],
+          );
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   const toggleWord = (word: string) => {
     setSelectedWords((prev) =>
       prev.includes(word) ? prev.filter((w) => w !== word) : [...prev, word],
@@ -115,46 +159,38 @@ export default function RespondPage() {
     setStep("image");
   };
 
-  const submitFeelings = async () => {
+  // 送信の完了を待たずに次の画面へ進む。embedding生成と共鳴判定はバックグラウンドで走り、
+  // 共鳴が生まれたらRealtimeでポップアップが届く
+  const submitFeelings = () => {
     if (!stimuli) return;
     const stimulus = stimuli[index];
     const participant = getStoredParticipant()!;
-    setSubmitting(true);
     setError(null);
-    try {
-      const { error } = await getSupabase().functions.invoke(
-        "submit-response",
-        {
-          body: {
-            participant_id: participant.id,
-            stimulus_id: stimulus.id,
-            free_text: freeText.trim(),
-            hint_words_selected: selectedWords,
-          },
-        },
-      );
-      if (error) throw error;
-      const toneQs = questions.filter((q) => q.tone_id === stimulus.tone_id);
-      const unanswered = toneQs.some((q) => !answeredQuestionIds.has(q.id));
-      if (unanswered) {
-        setStep("quiz");
-      } else {
-        // このトーンの質問は回答済み（同じトーンの画像が複数ある場合）
-        await runResonanceCheck(participant.id);
-        advance(answeredQuestionIds);
-      }
-    } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
-  const runResonanceCheck = async (participantId: string) => {
-    const { data } = await getSupabase().functions.invoke("check-resonance", {
-      body: { participant_id: participantId },
-    });
-    setNewMatches(data?.matches ?? []);
+    const body = {
+      participant_id: participant.id,
+      stimulus_id: stimulus.id,
+      free_text: freeText.trim(),
+      hint_words_selected: selectedWords,
+    };
+    getSupabase()
+      .functions.invoke("submit-response", { body })
+      .then(({ error }) => {
+        if (error) throw error;
+      })
+      .catch((e) =>
+        setError(
+          `感想の送信に失敗しました（${e instanceof Error ? e.message : String(e)}）`,
+        ),
+      );
+
+    const toneQs = questions.filter((q) => q.tone_id === stimulus.tone_id);
+    if (toneQs.some((q) => !answeredQuestionIds.has(q.id))) {
+      setStep("quiz");
+    } else {
+      // このトーンの質問は回答済み（同じトーンの画像が複数ある場合）
+      advance(answeredQuestionIds);
+    }
   };
 
   const submitQuiz = async () => {
@@ -177,7 +213,10 @@ export default function RespondPage() {
         .from("diagnosis_answers")
         .insert(rows);
       if (error) throw error;
-      await runResonanceCheck(participant.id);
+      // 共鳴判定は待たない（結果はRealtimeで届く）
+      void getSupabase().functions.invoke("check-resonance", {
+        body: { participant_id: participant.id },
+      });
       const answered = new Set(answeredQuestionIds);
       toneQs.forEach((q) => answered.add(q.id));
       advance(answered);

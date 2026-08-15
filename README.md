@@ -10,8 +10,9 @@
    1. 画像を見る
    2. 感じたことを記録する（トーンごとのヒント語 + ひとこと自由記述）
    3. そのトーンに紐づく診断質問（2問・表出/内省軸）に答える
-3. `/feed` … 集合アート + 共鳴フィード（スマホ用）
-4. `/screen` … 会場の大画面用ビュー（集合アートを背景に共鳴フィードを重ねる）
+3. `/feed` … 共鳴の星座 + 集合アート + 共鳴フィード（スマホ用）
+4. `/screen` … 会場の大画面用ビュー（集合アートを背景に星座と共鳴フィード）
+5. `/admin/test` … 運営用デバッグUI（`test_mode` が有効なときだけ使える）
 
 刺激（画像）・ヒント語・診断質問の追加や変更は、Supabase の Table Editor から
 `tones` / `stimuli` / `hint_words` / `diagnosis_questions` を直接編集する運用（管理画面はなし）。
@@ -22,9 +23,11 @@
 - バックエンド/DB: Supabase (Postgres + pgvector + Realtime + Edge Functions)
 - `tones` をマスタとし、画像・ヒント語・診断質問はすべて `tone_id` で参照する
   （トーンを追加してもコード変更は不要）
-- 感想投稿〜マッチングの流れ:
-  1. 感想入力後、フロントが Edge Function `submit-response` を呼ぶ
-     → 感想文（ヒント語 + 自由記述）の embedding を生成し `stimulus_responses` に insert
+- 感想投稿〜マッチングの流れ（非同期）:
+  1. 感想入力後、フロントは Edge Function `submit-response` を呼んだだけで即座に次の画面へ進む。
+     Edge Function側も感想を先にinsertして即レスポンスを返し、embedding生成と共鳴判定は
+     `EdgeRuntime.waitUntil` でバックグラウンド実行する（参加者を待たせない）。
+     共鳴が生まれたら `matches` のRealtimeで後から画面に届く
      （OpenAI `text-embedding-3-small`。キー未設定時は簡易フォールバック）
   2. 診断質問の回答は `diagnosis_answers` に直接 insert（a=表出 / b=内省）
   3. トーンの質問に答え終わるたびにフロントが Edge Function `check-resonance` を呼ぶ
@@ -67,6 +70,42 @@ npm install
 npm run dev
 ```
 
+### 共鳴の星座（`/feed` ・ `/screen`）
+
+- 自分のドットを中心に固定し、共鳴度が高い人ほど近くに配置する（d3-force の force-directed layout）
+- 座標のもとになる類似度は DB関数 `refresh_resonance_graph()` が全員分まとめて計算し、
+  `resonance_graph` にキャッシュする。`stimulus_responses` / `diagnosis_answers` / `matches` への
+  書き込みごとにトリガで再計算され、フロントはRealtimeでその更新を受け取るだけ（毎フレームの再計算はしない）
+- 閾値を超えたペアはオレンジの太い線と反応名で強調される
+
+## テストモード（本番当日の確認にも使える）
+
+`app_settings.test_mode` を 1 にすると有効。操作には合言葉（`debug_config.token`、初期値 `kyomei-debug`）が必要。
+
+### 画面から（`/admin/test`）
+
+1. `/admin/test` を開き、合言葉を入力して test_mode を ON（一度入れればlocalStorageに保存される）
+2. **a. 高スコアのペアを投入** … ダミー参加者2人にほぼ同一の感想と同じ診断回答を投入する。
+   実際のembedding計算パイプラインを通るため、数秒後に共鳴が成立する
+3. **b. 共鳴を直接insert** … 計算を経由せず `matches` にscore/反応名/decisive_toneをinsertする
+4. 終わったら「テストデータを削除」でテスト参加者（`participants.is_test`）を一括削除
+
+`test_mode` がONのときだけ `/feed` の下部にデバッグUIへのリンクが出る。
+
+### CLIから
+
+```bash
+export NEXT_PUBLIC_SUPABASE_URL=...
+export SUPABASE_SERVICE_ROLE_KEY=...
+
+node scripts/test-data.mjs test-mode on
+node scripts/test-data.mjs seed-pair --fixture 0        # a) 実パイプラインを通る高スコアペア
+node scripts/test-data.mjs force-match --score 0.93 --phrase "しずかな共振"  # b) 直接insert
+node scripts/test-data.mjs refresh-graph                # 星座の再計算
+node scripts/test-data.mjs cleanup                      # テストデータ削除
+node scripts/test-data.mjs test-mode off                # 本番前に必ずOFFに戻す
+```
+
 ## 調整可能なパラメータ
 
 `app_settings` テーブルをSQLで更新するだけで反映される:
@@ -75,6 +114,8 @@ npm run dev
 update app_settings set value = 0.7 where key = 'text_weight';
 update app_settings set value = 0.3 where key = 'type_weight';
 update app_settings set value = 0.88 where key = 'match_threshold';  -- 厳しめ 0.88〜0.92 を想定
+update app_settings set value = 8 where key = 'graph_top_k';         -- 星座の1人あたりのエッジ本数
+update app_settings set value = 0 where key = 'test_mode';           -- 本番は0
 ```
 
 ## コンテンツの追加・変更（Table Editor運用）
