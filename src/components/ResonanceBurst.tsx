@@ -10,6 +10,8 @@ import type { Match } from "@/lib/types";
 
 const DURATION = 6000;
 const VIBRATION = [40, 60, 40, 60, 90];
+// 会場で共鳴が連続しても演出が延々と積み上がらないように、待ち行列は数件で打ち切る
+const MAX_QUEUE = 3;
 
 type Props = {
   /** 指定すると、その人が当事者の共鳴だけを演出する（未指定＝全員ぶん＝会場スクリーン） */
@@ -44,7 +46,12 @@ export default function ResonanceBurst({ meId, haptics = true }: Props) {
           }
           seen.current.add(match.id);
           const detail = await loadMatchDetail(supabase, match);
-          setQueue((prev) => [...prev, detail]);
+          // あふれた分は古い待ち（表示中の次以降）から捨てて、いま起きた共鳴を優先する
+          setQueue((prev) => {
+            if (prev.length === 0) return [detail];
+            const pending = [...prev.slice(1), detail];
+            return [prev[0], ...pending.slice(-(MAX_QUEUE - 1))];
+          });
         },
       )
       .subscribe();
