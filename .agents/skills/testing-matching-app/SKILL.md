@@ -84,3 +84,10 @@ Direct `type` of Japanese may produce nothing. Use `printf 'テキスト' | DISP
 - RLS alone isn't enough locally: tables need GRANTs to anon/authenticated AND service_role (42501 → check migration).
 - The carousel on `/feed` uses `snap-mandatory`; a small wheel delta snaps back. Use a large shift+wheel delta or drag.
 - `/screen` labels can overlap when two matched stars sit very close together (cosmetic).
+- Timing assertions on the burst (5s auto-close, queue behaviour) are unreliable from screenshot cadence (tool latency
+  2-6s). Install a 50ms poller in the page recording `document.querySelector('[role="dialog"]')?.innerText` and the
+  constellation `<g>` transform, fire matches from the shell with `date`-stamped logs, then read the poller log.
+- The burst overlay is full-screen: a click aimed at a debug-UI button while a burst is up dismisses the burst instead
+  (and may fall through to a link underneath).
+- A stale dev build can serve `/feed` as 500 with `__webpack_modules__[moduleId] is not a function` —
+  `pkill -f next; rm -rf .next; npm run dev`.
