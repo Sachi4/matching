@@ -133,7 +133,8 @@ export default function TestModePage() {
           <p className="font-bold">b. 共鳴を直接insert</p>
           <p className="text-xs text-white/50">
             計算ロジックを経由せず matches に直接insertします。
-            フロントの表示とRealtime反映だけを切り離して確認できます。
+            共鳴フィードの表示とRealtime反映だけを切り離して確認できます
+            （感想がないダミーなので、星座には星は増えません）。
           </p>
         </div>
         <div className="flex gap-2">

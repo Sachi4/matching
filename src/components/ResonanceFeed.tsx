@@ -78,6 +78,15 @@ export default function ResonanceFeed({ large }: { large?: boolean }) {
           );
         },
       )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "matches" },
+        (payload) => {
+          const removed = payload.old as { id?: string };
+          if (!removed.id) return;
+          setItems((prev) => prev.filter((i) => i.id !== removed.id));
+        },
+      )
       .subscribe();
 
     return () => {
