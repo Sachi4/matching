@@ -40,8 +40,11 @@
   3. DB関数 `find_resonance_candidates` が他参加者との共鳴度を計算
      - `共鳴度 = 感想文embeddingの類似度`（同じ刺激に両者が回答したペアのコサイン類似度の平均）
      - 閾値は `app_settings.match_threshold` で調整可能（初期値 0.55）
-  4. 閾値を超えたペアを `matches` に insert。感想文の類似度が最も高かったトーンを
-     `decisive_tone_id` として記録し、そのトーンの感想文から Claude API で「反応名」（詩的な短句）を生成
+  4. 閾値を超えたペアを `matches` に insert。決め手のトーン（`decisive_tone_id`）は
+     トーンごとに正規化した類似度（そのトーンの全ペア平均からのずれ ÷ 標準偏差）が
+     最大のトーンを使う。生の類似度で比べると、トーンごとの水準差（本番では0.01程度）より
+     共通刺激ペア数の多さが効いてしまい、決め手が特定のトーンに偏るため。
+     そのトーンの感想文から Claude API で「反応名」（詩的な短句）を生成する
 - フロントは Supabase Realtime（`postgres_changes`）で `matches` / `stimulus_responses` の insert を購読し、
   共鳴カードと共鳴マップを即時更新し、共鳴の瞬間はバースト演出を出す
 
