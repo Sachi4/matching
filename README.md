@@ -31,7 +31,11 @@
      Edge Function側も感想を先にinsertして即レスポンスを返し、embedding生成と共鳴判定は
      `EdgeRuntime.waitUntil` でバックグラウンド実行する（参加者を待たせない）。
      共鳴が生まれたら `matches` のRealtimeで後から画面に届く
-     （OpenAI `text-embedding-3-small`。キー未設定時は簡易フォールバック）
+     （embeddingは Gemini `gemini-embedding-2` のマルチモーダル。
+     感想文だけでなく、その感想が向けられた刺激画像も同じベクトルに含めるので
+     「どの画像に対してどう感じたか」で共鳴を測れる。
+     `GEMINI_API_KEY` 未設定時は OpenAI `text-embedding-3-small`（テキストのみ）、
+     どちらも無ければ簡易フォールバック）
   2. embeddingが埋まった直後に Edge Function `check-resonance` がバックグラウンドで走る
   3. DB関数 `find_resonance_candidates` が他参加者との共鳴度を計算
      - `共鳴度 = 感想文embeddingの類似度`（同じ刺激に両者が回答したペアのコサイン類似度の平均）
@@ -57,7 +61,10 @@ psql "$DATABASE_URL" -f supabase/seed.sql   # トーン・画像・ヒント語�
 ```bash
 supabase functions deploy submit-response
 supabase functions deploy check-resonance
-supabase secrets set OPENAI_API_KEY=sk-...        # embedding用（任意。未設定でも動く）
+supabase functions deploy reembed-responses
+supabase secrets set GEMINI_API_KEY=...           # embedding用（画像＋テキスト。未設定でも動く）
+supabase secrets set PUBLIC_SITE_URL=https://...  # 刺激画像の取得元（未設定ならテキストのみ）
+supabase secrets set OPENAI_API_KEY=sk-...        # Gemini未設定時の代替（任意）
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-... # 反応名生成用（任意。未設定でも動く）
 supabase secrets set ALLOWED_ORIGIN=https://...   # 本番のフロントのオリジン（任意。未設定は*）
 ```
@@ -112,9 +119,14 @@ node scripts/test-data.mjs test-mode on
 node scripts/test-data.mjs seed-pair --fixture 0        # a) 実パイプラインを通る高スコアペア
 node scripts/test-data.mjs force-match --score 0.93 --phrase "しずかな共振"  # b) 直接insert
 node scripts/test-data.mjs refresh-graph                # 星座の再計算
+node scripts/test-data.mjs reembed                      # embeddingを全件作り直す
+node scripts/test-data.mjs similarity-stats             # 閾値調整用の類似度分布
 node scripts/test-data.mjs cleanup                      # テストデータ削除
 node scripts/test-data.mjs test-mode off                # 本番前に必ずOFFに戻す
 ```
+
+embeddingモデル（`GEMINI_API_KEY` の有無など）を切り替えたときは、古いベクトルと新しいベクトルが
+同じ空間に無く共鳴度が意味を成さなくなるため、`reembed` で既存の感想を全件作り直すこと。
 
 ## 調整可能なパラメータ
 

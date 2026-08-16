@@ -12,6 +12,9 @@ export type GraphEdge = {
   b: string;
   text_similarity: number;
   resonance: number;
+  // 全ペアの中での相対的な近さ（0〜1）。embeddingモデルによって類似度の絶対値の
+  // レンジが変わるため、配置にはこちらを使う（古いキャッシュには無いのでoptional）
+  proximity?: number;
   shared_stimuli: number;
   matched: boolean;
   reaction_phrase: string | null;

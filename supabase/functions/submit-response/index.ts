@@ -3,8 +3,11 @@
 // バックグラウンド（EdgeRuntime.waitUntil）で行う。共鳴が生まれた場合は
 // matches のRealtimeイベントとしてフロントに後から届く。
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-const EMBEDDING_DIM = 1536;
+import {
+  generateEmbedding,
+  loadStimulusImageOrNull,
+  responseText,
+} from "../_shared/embedding.ts";
 
 // 本番ではALLOWED_ORIGINにフロントのオリジンを設定して呼び出し元を制限する
 const corsHeaders = {
@@ -26,58 +29,17 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-// OpenAI embedding API。キー未設定時はローカルの決定的擬似embeddingにフォールバック
-// （デモ・開発環境をAPIキーなしで動かすため。本番はOPENAI_API_KEYを設定すること）
-async function generateEmbedding(text: string): Promise<number[]> {
-  const apiKey = Deno.env.get("OPENAI_API_KEY");
-  if (apiKey) {
-    const res = await fetch("https://api.openai.com/v1/embeddings", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "text-embedding-3-small",
-        input: text,
-      }),
-    });
-    if (!res.ok) {
-      throw new Error(`embedding API error: ${res.status} ${await res.text()}`);
-    }
-    const data = await res.json();
-    return data.data[0].embedding as number[];
-  }
-  return localEmbedding(text);
-}
-
-// 文字bigramのハッシュに基づく決定的擬似embedding（コサイン類似度が
-// 表層的な語彙の重なりを反映する程度の簡易フォールバック）
-function localEmbedding(text: string): number[] {
-  const vec = new Array(EMBEDDING_DIM).fill(0);
-  const normalized = text.normalize("NFKC").toLowerCase();
-  for (let i = 0; i < normalized.length - 1; i++) {
-    const gram = normalized.slice(i, i + 2);
-    let h = 2166136261;
-    for (const ch of gram) {
-      h ^= ch.codePointAt(0)!;
-      h = Math.imul(h, 16777619);
-    }
-    vec[Math.abs(h) % EMBEDDING_DIM] += 1;
-  }
-  const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) || 1;
-  return vec.map((v) => v / norm);
-}
-
 // バックグラウンド処理: embeddingを生成してinsert済みの行を更新し、そのまま共鳴判定まで走らせる
 async function embedAndCheck(
   supabase: ReturnType<typeof createClient>,
   responseId: string,
   participantId: string,
+  stimulusId: string,
   text: string,
 ): Promise<void> {
   try {
-    const embedding = await generateEmbedding(text);
+    const image = await loadStimulusImageOrNull(supabase, stimulusId);
+    const embedding = await generateEmbedding(text, image);
     const { error } = await supabase
       .from("stimulus_responses")
       .update({ embedding })
@@ -140,9 +102,7 @@ Deno.serve(async (req) => {
       return json({ error: "hint_words_selected が不正です" }, 400);
     }
     const words: string[] = hint_words_selected ?? [];
-    const text = [words.join("、"), (free_text ?? "").trim()]
-      .filter(Boolean)
-      .join("。");
+    const text = responseText(words, free_text ?? "");
     if (!text) {
       return json(
         { error: "ヒント語か自由記述のどちらかを入力してください" },
@@ -169,7 +129,13 @@ Deno.serve(async (req) => {
       .single();
     if (insertError) throw insertError;
 
-    const background = embedAndCheck(supabase, response.id, participant_id, text);
+    const background = embedAndCheck(
+      supabase,
+      response.id,
+      participant_id,
+      stimulus_id,
+      text,
+    );
     if (typeof EdgeRuntime !== "undefined") {
       EdgeRuntime.waitUntil(background);
     } else {

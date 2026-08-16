@@ -5,6 +5,8 @@
 //   node scripts/test-data.mjs seed-pair [--fixture 0]   # 実パイプラインを通る高スコアペア
 //   node scripts/test-data.mjs force-match [--score 0.93] [--phrase 言葉]
 //   node scripts/test-data.mjs refresh-graph
+//   node scripts/test-data.mjs reembed [--limit 200]  # embeddingモデル切り替え後の作り直し
+//   node scripts/test-data.mjs similarity-stats       # 閾値調整用の類似度分布
 //   node scripts/test-data.mjs cleanup
 //
 // 必要な環境変数: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -120,6 +122,22 @@ try {
       console.log("matchesに直接insertしました:", result);
       break;
     }
+    case "reembed": {
+      const result = await invoke("reembed-responses", {
+        limit: Number(flags.limit ?? 200),
+        only_missing: flags["only-missing"] !== undefined,
+      });
+      console.log(
+        `embeddingを作り直しました: ${result.updated}/${result.total}件` +
+          (result.failed.length ? `（失敗 ${result.failed.length}件）` : ""),
+      );
+      break;
+    }
+    case "similarity-stats": {
+      const stats = await rpc("resonance_similarity_stats");
+      console.log(stats);
+      break;
+    }
     case "refresh-graph":
       await rpc("refresh_resonance_graph");
       console.log("共鳴グラフを再計算しました");
@@ -133,7 +151,7 @@ try {
     }
     default:
       console.error(
-        "使い方: node scripts/test-data.mjs <test-mode|seed-pair|force-match|refresh-graph|cleanup>",
+        "使い方: node scripts/test-data.mjs <test-mode|seed-pair|force-match|refresh-graph|reembed|similarity-stats|cleanup>",
       );
       process.exit(1);
   }

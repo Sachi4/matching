@@ -33,9 +33,12 @@ const VIEW = 1000;
 // 共鳴した2人にズームするときの倍率
 const FOCUS_SCALE = 2.2;
 
-// 共鳴度が高いほど近くに置く（似ている＝近い）
-function linkDistance(resonance: number): number {
-  const t = Math.min(1, Math.max(0, (resonance - 0.15) / 0.65));
+// 共鳴度が高いほど近くに置く（似ている＝近い）。
+// proximity（全ペアの中での相対値）があればそれを使い、無ければ生の共鳴度を使う
+function linkDistance(edge: GraphEdge): number {
+  const t =
+    edge.proximity ??
+    Math.min(1, Math.max(0, (edge.resonance - 0.15) / 0.65));
   return 420 - 340 * t;
 }
 
@@ -133,7 +136,7 @@ export default function Constellation({
         "link",
         forceLink<LayoutNode, LayoutLink>(links)
           .id((d) => d.id)
-          .distance((l) => linkDistance(l.resonance))
+          .distance((l) => linkDistance(l))
           .strength((l) => (l.matched ? 0.9 : 0.35)),
       )
       .force("charge", forceManyBody().strength(-160))
@@ -206,7 +209,9 @@ export default function Constellation({
                 y2={b.y}
                 stroke={l.matched ? "#F2A65A" : "#A78BC9"}
                 strokeWidth={l.matched ? 4 : 1}
-                strokeOpacity={l.matched ? 0.9 : 0.12 + l.resonance * 0.2}
+                strokeOpacity={
+                  l.matched ? 0.9 : 0.12 + (l.proximity ?? l.resonance) * 0.2
+                }
                 className={l.matched ? "animate-resonance-line" : undefined}
               />
             );
