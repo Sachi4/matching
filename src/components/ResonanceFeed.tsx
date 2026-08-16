@@ -132,9 +132,10 @@ export default function ResonanceFeed({
         if (column[i] && picked.length < limit) picked.push(column[i]);
       }
     }
-    // 並べ直さない: 取った順（感情が交互）のままにして、先頭から見ても感情が混ざるようにする
-    return picked;
-  }, [items, isMine, limit]);
+    // 自分がいる画面（/feed）は自分の共鳴を先に出す。会場の大画面（/screen）は
+    // 取った順（感情が交互）のままにして、先頭から見ても感情が混ざるようにする
+    return meId ? picked.sort(byPriority) : picked;
+  }, [items, isMine, limit, meId]);
 
   useEffect(() => {
     onTotalChange?.(items.length);
