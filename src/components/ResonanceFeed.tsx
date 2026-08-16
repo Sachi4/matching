@@ -132,7 +132,8 @@ export default function ResonanceFeed({
         if (column[i] && picked.length < limit) picked.push(column[i]);
       }
     }
-    return picked.sort(byPriority);
+    // 並べ直さない: 取った順（感情が交互）のままにして、先頭から見ても感情が混ざるようにする
+    return picked;
   }, [items, isMine, limit]);
 
   useEffect(() => {

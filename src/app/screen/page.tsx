@@ -23,7 +23,8 @@ export default function ScreenPage() {
         </div>
         <div className="shrink-0">
           <p className="mb-1 text-xs text-white/60">生まれた共鳴</p>
-          <ResonanceFeed layout="carousel" limit={5} large />
+          {/* 会場の大画面は誰も横スクロールしないので、一度に入る3枚だけ出す */}
+          <ResonanceFeed layout="carousel" limit={3} large />
         </div>
       </div>
       {/* 会場の大画面はページ遷移せず、この画面の共鳴マップをそのままズームさせる */}
