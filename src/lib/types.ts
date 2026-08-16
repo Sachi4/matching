@@ -34,6 +34,50 @@ export type DiagnosisScore = {
   created_at: string;
 };
 
+export type QuestSession = {
+  id: string;
+  match_id: string;
+  emotion: string;
+  layer: number;
+  status: "active" | "completed";
+  created_at: string;
+  completed_at: string | null;
+};
+
+export type QuestTurn = {
+  id: string;
+  session_id: string;
+  participant_id: string;
+  layer: number;
+  chips: string[];
+  axis_x: number | null;
+  axis_y: number | null;
+  text_answer: string | null;
+  created_at: string;
+};
+
+export type QuestResult = {
+  l1_overlap: number | null;
+  l2_distance: number | null;
+  text_similarity: number | null;
+  resonance: number;
+  contrast: number;
+  resolution: number;
+};
+
+export type QuestSharedTerm = {
+  id: string;
+  session_id: string;
+  match_id: string;
+  emotion: string;
+  term: string;
+  description: string | null;
+  resonance: number;
+  contrast: number;
+  resolution: number;
+  created_at: string;
+};
+
 export type Match = {
   id: string;
   participant_id_a: string;
