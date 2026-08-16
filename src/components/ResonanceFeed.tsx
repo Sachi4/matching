@@ -155,7 +155,7 @@ export default function ResonanceFeed({
             }}
           >
             <div
-              className={`h-full rounded-2xl bg-[#16141f]/90 px-5 text-center ${large ? "py-8" : "py-5"}`}
+              className={`h-full rounded-2xl bg-[#16141f]/90 px-5 text-center ${large ? "py-4" : "py-5"}`}
             >
               {mine && (
                 <p className="mb-1 text-[10px] tracking-widest text-white/50">
@@ -164,37 +164,33 @@ export default function ResonanceFeed({
               )}
 
               {/* いちばん伝えたいのは共鳴の強さなので、数値を主役にする */}
-              <p
-                className={`font-bold tracking-tight text-white ${
-                  large ? "text-7xl" : "text-5xl"
-                }`}
-              >
+              <p className="text-5xl font-bold tracking-tight text-white">
                 {(Number(item.score) * 100).toFixed(0)}
                 <span
                   className={`ml-1 font-medium text-white/50 ${
-                    large ? "text-2xl" : "text-lg"
+                    large ? "text-xl" : "text-lg"
                   }`}
                 >
                   %
                 </span>
               </p>
               <p
-                className={`mt-0.5 tracking-widest text-white/40 ${large ? "text-sm" : "text-[10px]"}`}
+                className={`mt-0.5 tracking-widest text-white/40 ${large ? "text-xs" : "text-[10px]"}`}
               >
                 共鳴度
               </p>
 
               <div
-                className={`mt-3 inline-flex items-center gap-2 text-white/70 ${large ? "text-xl" : "text-base"}`}
+                className="mt-2 inline-flex items-center gap-2 text-base text-white/70"
               >
                 <span>{item.nicknames[0]}</span>
-                <IconArrowsLeftRight size={large ? 18 : 14} aria-hidden />
+                <IconArrowsLeftRight size={14} aria-hidden />
                 <span>{item.nicknames[1]}</span>
               </div>
 
               {item.reaction_phrase && (
                 <p
-                  className={`mt-2 text-white/40 ${large ? "text-sm" : "text-[11px]"}`}
+                  className={`mt-1 text-white/40 ${large ? "text-xs" : "text-[11px]"}`}
                 >
                   {item.reaction_phrase}
                 </p>

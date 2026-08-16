@@ -9,12 +9,12 @@ import ResonanceFeed from "@/components/ResonanceFeed";
 export default function ScreenPage() {
   return (
     <main className="relative h-screen overflow-hidden bg-[#0b0a11]">
-      <div className="relative z-10 flex h-screen flex-col gap-6 px-10 py-8">
+      <div className="relative z-10 flex h-screen flex-col gap-3 px-10 py-5">
         <div className="text-center">
-          <p className="text-sm tracking-widest text-violet-300/70">
+          <p className="text-xs tracking-widest text-violet-300/70">
             運命の出会いを科学する
           </p>
-          <h1 className="mt-1 text-4xl font-bold">共鳴マップ</h1>
+          <h1 className="text-2xl font-bold">共鳴マップ</h1>
         </div>
         {/* 正方形のsvgに高さを決めさせると画面からはみ出すので、
             高さは親のflexで決め、svgは絶対配置で埋める */}
@@ -22,7 +22,7 @@ export default function ScreenPage() {
           <Constellation meId={null} large className="absolute inset-0" />
         </div>
         <div className="shrink-0">
-          <p className="mb-2 text-sm text-white/60">生まれた共鳴</p>
+          <p className="mb-1 text-xs text-white/60">生まれた共鳴</p>
           <ResonanceFeed layout="carousel" limit={5} large />
         </div>
       </div>
