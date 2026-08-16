@@ -37,22 +37,70 @@ type LayoutNode = SimulationNodeDatum & {
 
 type Pole = GraphTone & { x: number; y: number; color: string };
 
-const VIEW = 1000;
-// 感情ハブを置く三角形の外接円半径
-const POLE_RADIUS = 300;
+// 感情ハブは動かない衝突体としてシミュレーションに混ぜる
+type HubNode = SimulationNodeDatum & { hub: true };
+type SimNode = LayoutNode | HubNode;
+
+// viewBoxの高さ。幅は入れ物の比率に合わせて伸びる（横長の /screen でも左右を使い切って字を大きくする）
+const VIEW_HEIGHT = 820;
+const ASPECT_RANGE = [0.7, 3.2] as const;
 // 共鳴した2人にズームするときの倍率
 const FOCUS_SCALE = 2.2;
 // これ未満の寄りは線を描かない（3本とも薄く出ると三角形が潰れて見える）
 const MIN_LINK_WEIGHT = 0.12;
+// 1周に並べる人数
+const CLUSTER_RING_SIZE = 6;
+// 重心へ戻す割合。寄りが偏っていない人ほど中央寄りになる
+const CENTROID_PULL = 0.15;
+// meIdがないとき（/screen）にラベルを出す共鳴の数
+const SCREEN_LABEL_LIMIT = 2;
+// ラベルの避け先の上下幅
+const LABEL_OFFSETS = [-14, -70, 42, -126, 98, -182, 154] as const;
+// 文字同士をこれだけ離す
+const TEXT_PADDING = 8;
 
-// 感情ハブを上・右下・左下の順に等間隔で置く
-function buildPoles(tones: GraphTone[]): Pole[] {
+// 点の大きさと、その下に出すニックネームの位置
+function dotRadius(n: LayoutNode, isMe: boolean) {
+  return isMe ? 14 : 8 + Math.min(6, n.response_count);
+}
+function nicknameOffset(n: LayoutNode, isMe: boolean, large?: boolean) {
+  return dotRadius(n, isMe) + (large ? 24 : 20);
+}
+
+// 文字列の占める箱（全角はほぼfontSize、半角はその半分として見積もる）
+type TextBox = { left: number; right: number; top: number; bottom: number };
+function textBox(
+  x: number,
+  y: number,
+  text: string,
+  fontSize: number,
+): TextBox {
+  const width = [...text].reduce(
+    (sum, c) => sum + (/[\u0020-\u007e]/.test(c) ? 0.55 : 1) * fontSize,
+    0,
+  );
+  return {
+    left: x - width / 2 - TEXT_PADDING,
+    right: x + width / 2 + TEXT_PADDING,
+    top: y - fontSize - TEXT_PADDING,
+    bottom: y + fontSize * 0.3 + TEXT_PADDING,
+  };
+}
+// 重なっている面積（0ならひとつも重ならない）
+function overlapArea(a: TextBox, b: TextBox) {
+  const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+// 感情ハブを上・右下・左下の順に等間隔で置く（横長なら左右に引き伸ばす）
+function buildPoles(tones: GraphTone[], rx: number, ry: number): Pole[] {
   return tones.map((tone, i) => {
     const angle = (-90 + (i * 360) / Math.max(1, tones.length)) * (Math.PI / 180);
     return {
       ...tone,
-      x: Math.cos(angle) * POLE_RADIUS,
-      y: Math.sin(angle) * POLE_RADIUS,
+      x: Math.cos(angle) * rx,
+      y: Math.sin(angle) * ry,
       color: tonePalette(tone.label)[0],
     };
   });
@@ -72,7 +120,22 @@ export default function Constellation({
 }) {
   const [graph, setGraph] = useState<ResonanceGraph>(EMPTY_GRAPH);
   const [focus, setFocus] = useState<ResonanceFocus | null>(null);
+  const [aspect, setAspect] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // 入れ物の比率に合わせてviewBoxを横に伸ばす（正方形のままだと横長の画面で中央にしか描かれず字が小さい）
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => {
+      const { width, height } = el.getBoundingClientRect();
+      if (width > 0 && height > 0) setAspect(width / height);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // バースト演出のあと、その共鳴の2人にズームして数秒だけハイライトする
   useEffect(() => {
@@ -126,19 +189,48 @@ export default function Constellation({
 
   // グラフが更新されたときだけレイアウトし直す（毎フレームの再計算はしない）
   const layout = useMemo(() => {
-    const poles = buildPoles(graph.tones ?? []);
+    const viewWidth =
+      VIEW_HEIGHT *
+      Math.min(ASPECT_RANGE[1], Math.max(ASPECT_RANGE[0], aspect));
+    const rx = viewWidth * 0.3;
+    const ry = VIEW_HEIGHT * 0.3;
+    const hubRadius = Math.min(rx, ry);
+    const clusterRadius = hubRadius * 0.62;
+    const clusterStep = hubRadius * 0.4;
+    const poles = buildPoles(graph.tones ?? [], rx, ry);
     const poleById = new Map(poles.map((p) => [p.id, p]));
+
+    // 寄ったハブごとに、輪の上の席番号を一人ずつ割り当てる
+    const dominantOf = (n: ResonanceGraph["nodes"][number]) => {
+      if (n.dominant_tone_id && poleById.has(n.dominant_tone_id)) {
+        return n.dominant_tone_id;
+      }
+      const weights = Object.entries(n.tone_weights ?? {}).filter(([id]) =>
+        poleById.has(id),
+      );
+      return [...weights].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    };
+    const seatIndex = new Map<string, number>();
+    const seatCount = new Map<string, number>();
+    for (const n of graph.nodes) {
+      const toneId = dominantOf(n);
+      if (!toneId) continue;
+      const seat = seatCount.get(toneId) ?? 0;
+      seatIndex.set(n.id, seat);
+      seatCount.set(toneId, seat + 1);
+    }
 
     const nodes: LayoutNode[] = graph.nodes.map((n, i) => {
       const weights = Object.entries(n.tone_weights ?? {}).filter(([id]) =>
         poleById.has(id),
       );
       const total = weights.reduce((sum, [, w]) => sum + w, 0);
-      const strongest = [...weights].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+      const dominantToneId = dominantOf(n);
+      const hub = dominantToneId ? poleById.get(dominantToneId)! : null;
       // トーン情報が無い（古いキャッシュ）ときは円周に均等に置くだけにする
       const fallbackAngle =
         (i / Math.max(1, graph.nodes.length)) * Math.PI * 2;
-      const anchor =
+      const centroid =
         total > 0
           ? weights.reduce(
               (acc, [id, w]) => {
@@ -151,19 +243,35 @@ export default function Constellation({
               { x: 0, y: 0 },
             )
           : {
-              x: Math.cos(fallbackAngle) * POLE_RADIUS * 0.6,
-              y: Math.sin(fallbackAngle) * POLE_RADIUS * 0.6,
+              x: Math.cos(fallbackAngle) * rx * 0.6,
+              y: Math.sin(fallbackAngle) * ry * 0.6,
             };
+      // 重心そのままだと全員の寄りが似ているときに中央で団子になって名前が読めない。
+      // いちばん響いた感情のハブを囲む輪に一人ずつ席を割り当て、重心へ少しだけ引き戻す
+      let anchor = centroid;
+      if (hub) {
+        const seat = seatIndex.get(n.id) ?? 0;
+        const ring = Math.floor(seat / CLUSTER_RING_SIZE);
+        const slot = seat % CLUSTER_RING_SIZE;
+        const angle =
+          ((slot + (ring % 2) * 0.5) / CLUSTER_RING_SIZE) * Math.PI * 2;
+        const radius = clusterRadius + ring * clusterStep;
+        const seated = {
+          x: hub.x + Math.cos(angle) * radius,
+          y: hub.y + Math.sin(angle) * radius,
+        };
+        anchor = {
+          x: seated.x + (centroid.x - seated.x) * CENTROID_PULL,
+          y: seated.y + (centroid.y - seated.y) * CENTROID_PULL,
+        };
+      }
 
       return {
         id: n.id,
         nickname: n.nickname,
         response_count: n.response_count,
         toneWeights: weights.map(([id, w]) => [id, total > 0 ? w / total : 0]),
-        dominantToneId:
-          n.dominant_tone_id && poleById.has(n.dominant_tone_id)
-            ? n.dominant_tone_id
-            : strongest,
+        dominantToneId,
         ax: anchor.x,
         ay: anchor.y,
         x: anchor.x,
@@ -171,42 +279,155 @@ export default function Constellation({
       };
     });
 
-    // 重心が同じ人同士が重なるので、アンカーに引き寄せつつ衝突だけ解く
-    forceSimulation(nodes)
+    // 重心が同じ人同士が重なるので、アンカーに引き寄せつつ衝突だけ解く。
+    // ハブは動かない衝突体として混ぜて、参加者の名前が感情名に被らないようにする
+    const nodeRadius = large ? 46 : 34;
+    const hubs: SimNode[] = poles.map((p) => ({
+      hub: true,
+      x: p.x,
+      y: p.y,
+      fx: p.x,
+      fy: p.y,
+    }));
+    forceSimulation<SimNode>([...nodes, ...hubs])
       .force(
         "x",
-        forceX<LayoutNode>((d) => d.ax).strength(0.6),
+        forceX<SimNode>((d) => ("hub" in d ? (d.x ?? 0) : d.ax)).strength(0.6),
       )
       .force(
         "y",
-        forceY<LayoutNode>((d) => d.ay).strength(0.6),
+        forceY<SimNode>((d) => ("hub" in d ? (d.y ?? 0) : d.ay)).strength(0.6),
       )
       .force("charge", forceManyBody().strength(-24))
-      .force("collide", forceCollide(large ? 26 : 22))
+      .force(
+        "collide",
+        forceCollide<SimNode>((d) =>
+          "hub" in d
+            ? hubRadius * 0.45 + nodeRadius
+            : // 長い名前ほど横に広いので、その分だけ縄張りを広げる
+              nodeRadius + Math.min(40, d.nickname.length * (large ? 6 : 5)),
+        ),
+      )
       .stop()
       .tick(300);
+
+    // 輪や衝突で押し出されたviewBoxの外に点と名前が切れるのを防ぐ。
+    // 名前は点より横に広いので、名前の幅で内側に寄せる
+    const nameSize = large ? 22 : 18;
+    const limitY = VIEW_HEIGHT / 2 - nodeRadius;
+    for (const n of nodes) {
+      const name = textBox(0, 0, n.nickname, nameSize);
+      const limitX = viewWidth / 2 - Math.max(nodeRadius, name.right);
+      n.x = Math.max(-limitX, Math.min(limitX, n.x ?? 0));
+      n.y = Math.max(-limitY, Math.min(limitY, n.y ?? 0));
+    }
 
     const byId = new Map(nodes.map((n) => [n.id, n]));
     const matched: GraphEdge[] = graph.edges.filter(
       (e) => e.matched && byId.has(e.a) && byId.has(e.b),
     );
 
-    return { poles, poleById, nodes, byId, matched };
-  }, [graph, large]);
+    return {
+      poles,
+      poleById,
+      nodes,
+      byId,
+      matched,
+      viewWidth,
+      hubRadius,
+    };
+  }, [graph, large, aspect]);
 
   const hasData = layout.nodes.length > 0;
 
   const focused = focus
     ? { a: layout.byId.get(focus.a), b: layout.byId.get(focus.b) }
     : null;
+  // 離れたペアだと2.2倍では両方が画面外に出てしまうので、2人が収まる倍率まで落とす
   const zoom =
     focused?.a && focused?.b
       ? {
           x: ((focused.a.x ?? 0) + (focused.b.x ?? 0)) / 2,
           y: ((focused.a.y ?? 0) + (focused.b.y ?? 0)) / 2,
+          scale: Math.max(
+            1,
+            Math.min(
+              FOCUS_SCALE,
+              (layout.viewWidth * 0.7) /
+                Math.max(1, Math.abs((focused.a.x ?? 0) - (focused.b.x ?? 0))),
+              (VIEW_HEIGHT * 0.7) /
+                Math.max(1, Math.abs((focused.a.y ?? 0) - (focused.b.y ?? 0))),
+            ),
+          ),
         }
       : null;
   const isFocused = (id: string) => !!focus && (focus.a === id || focus.b === id);
+  const isMine = (l: GraphEdge) => !!meId && (l.a === meId || l.b === meId);
+
+  // 成立したペアは多いので、ラベルは「自分の共鳴」「いま光った共鳴」「共鳴度が高いもの」に絞る。
+  // 他のラベルやニックネームと重なるときは上下に逃がし、逃げないものだけ間引く
+  // （自分の共鳴と光った共鳴は消さない）
+  const labeled = useMemo(() => {
+    const relevant = layout.matched.filter(
+      (l) =>
+        (!!meId && (l.a === meId || l.b === meId)) ||
+        (!!focus &&
+          (focus.a === l.a || focus.a === l.b) &&
+          (focus.b === l.a || focus.b === l.b)),
+    );
+    const rest = [...layout.matched]
+      .filter((l) => !relevant.includes(l))
+      .sort((a, b) => (b.score ?? b.resonance) - (a.score ?? a.resonance));
+    const candidates = meId
+      ? relevant
+      : [...relevant, ...rest.slice(0, SCREEN_LABEL_LIMIT)];
+
+    // ニックネームは点の下、感情名はハブの上に出ているので、その箱を先に埋めておく
+    const nameSize = large ? 22 : 18;
+    const taken = [
+      ...layout.nodes.map((n) => {
+        const isMe = n.id === meId;
+        return textBox(
+          n.x ?? 0,
+          (n.y ?? 0) + nicknameOffset(n, isMe, large),
+          isMe ? `${n.nickname}（あなた）` : n.nickname,
+          nameSize,
+        );
+      }),
+      ...layout.poles.map((p) =>
+        textBox(p.x, p.y + (large ? 12 : 10), p.label, large ? 30 : 26),
+      ),
+    ];
+
+    const placed: { edge: GraphEdge; x: number; y: number }[] = [];
+    for (const l of candidates) {
+      const a = layout.byId.get(l.a)!;
+      const b = layout.byId.get(l.b)!;
+      const mid = {
+        x: ((a.x ?? 0) + (b.x ?? 0)) / 2,
+        y: ((a.y ?? 0) + (b.y ?? 0)) / 2,
+      };
+      const tone = l.decisive_tone_id
+        ? layout.poleById.get(l.decisive_tone_id)
+        : null;
+      const score = Math.round((l.score ?? l.resonance) * 100);
+      const text = tone ? `${score}% ・ ${tone.label}` : `${score}%`;
+      // 上下に逃げ先を探し、どこも空いていなければ一番重なりの少ない場所を使う
+      const spots = LABEL_OFFSETS.map((dy) => {
+        const y = mid.y + dy;
+        const box = textBox(mid.x, y, text, nameSize);
+        const overlap = taken.reduce((sum, t) => sum + overlapArea(box, t), 0);
+        return { y, box, overlap };
+      });
+      const free = spots.find((s) => s.overlap === 0);
+      if (!free && !relevant.includes(l)) continue;
+      const spot =
+        free ?? spots.reduce((best, s) => (s.overlap < best.overlap ? s : best));
+      taken.push(spot.box);
+      placed.push({ edge: l, x: mid.x, y: spot.y });
+    }
+    return placed;
+  }, [layout, meId, focus, large]);
 
   return (
     <div ref={containerRef} className={className ?? "h-full w-full"}>
@@ -216,14 +437,14 @@ export default function Constellation({
         </p>
       ) : (
         <svg
-          viewBox={`${-VIEW / 2} ${-VIEW / 2} ${VIEW} ${VIEW}`}
+          viewBox={`${-layout.viewWidth / 2} ${-VIEW_HEIGHT / 2} ${layout.viewWidth} ${VIEW_HEIGHT}`}
           className="h-full w-full"
           aria-label="3つの感情の周囲に広がる共鳴マップ"
         >
           <g
             style={{
               transform: zoom
-                ? `scale(${FOCUS_SCALE}) translate(${-zoom.x}px, ${-zoom.y}px)`
+                ? `scale(${zoom.scale}) translate(${-zoom.x}px, ${-zoom.y}px)`
                 : "none",
               transition: "transform 1.2s ease-in-out",
             }}
@@ -234,7 +455,7 @@ export default function Constellation({
                 key={`field-${pole.id}`}
                 cx={pole.x}
                 cy={pole.y}
-                r={210}
+                r={layout.hubRadius * 0.85}
                 fill={pole.color}
                 fillOpacity={0.07}
               />
@@ -273,8 +494,8 @@ export default function Constellation({
                   x2={b.x}
                   y2={b.y}
                   stroke="#F2A65A"
-                  strokeWidth={4}
-                  strokeOpacity={0.9}
+                  strokeWidth={isMine(l) ? 6 : 3}
+                  strokeOpacity={isMine(l) ? 0.95 : 0.5}
                   className="animate-resonance-line"
                 />
               );
@@ -309,7 +530,7 @@ export default function Constellation({
               const color = n.dominantToneId
                 ? layout.poleById.get(n.dominantToneId)!.color
                 : "#A78BC9";
-              const base = isMe ? 14 : 8 + Math.min(6, n.response_count);
+              const base = dotRadius(n, isMe);
               const r = highlighted ? base * 1.8 : base;
               return (
                 <g key={n.id}>
@@ -333,18 +554,47 @@ export default function Constellation({
                       highlighted || isMe ? 1 : focus ? 0.25 : 0.85
                     }
                   />
-                  {(isMe || large || highlighted) && (
-                    <text
-                      x={n.x}
-                      y={(n.y ?? 0) + r + (large ? 22 : 18)}
-                      textAnchor="middle"
-                      fill={isMe ? "#ffffff" : "rgba(255,255,255,0.6)"}
-                      fontSize={large ? 20 : 16}
-                    >
-                      {isMe ? `${n.nickname}（あなた）` : n.nickname}
-                    </text>
-                  )}
+                  {/* 誰がどこにいるかが分からないと読めないので、名前は常に出す */}
+                  <text
+                    x={n.x}
+                    y={(n.y ?? 0) + r + (large ? 24 : 20)}
+                    textAnchor="middle"
+                    fill={isMe || highlighted ? "#ffffff" : "rgba(255,255,255,0.85)"}
+                    fontSize={large ? 22 : 18}
+                    fontWeight={isMe || highlighted ? 700 : 500}
+                    stroke="#0b0a11"
+                    strokeWidth={4}
+                    strokeOpacity={0.85}
+                    paintOrder="stroke"
+                  >
+                    {isMe ? `${n.nickname}（あなた）` : n.nickname}
+                  </text>
                 </g>
+              );
+            })}
+
+            {/* 成立したペアの線に「共鳴度％＋どの感情で共鳴したか」を出す */}
+            {labeled.map(({ edge: l, x, y }) => {
+              const tone = l.decisive_tone_id
+                ? layout.poleById.get(l.decisive_tone_id)
+                : null;
+              const score = Math.round((l.score ?? l.resonance) * 100);
+              return (
+                <text
+                  key={`match-label-${l.a}-${l.b}`}
+                  x={x}
+                  y={y}
+                  textAnchor="middle"
+                  fill="#F2A65A"
+                  fontSize={large ? 22 : 18}
+                  fontWeight={700}
+                  stroke="#0b0a11"
+                  strokeWidth={4}
+                  strokeOpacity={0.85}
+                  paintOrder="stroke"
+                >
+                  {tone ? `${score}% ・ ${tone.label}` : `${score}%`}
+                </text>
               );
             })}
           </g>
