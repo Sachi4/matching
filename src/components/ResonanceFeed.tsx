@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { getSupabase } from "@/lib/supabase";
+import { getStoredParticipant } from "@/lib/participant";
 import { SENSE_TYPES } from "@/lib/diagnosis";
 import type { Match } from "@/lib/types";
 
@@ -16,6 +18,12 @@ type FeedItem = Match & {
 // レイヤー2: 共鳴度が閾値を超えたペアが即時ポップするフィード
 export default function ResonanceFeed({ large }: { large?: boolean }) {
   const [items, setItems] = useState<FeedItem[]>([]);
+  // 自分が当事者の共鳴にだけ、探索フェーズへの入口を出す
+  const [me, setMe] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMe(getStoredParticipant()?.id ?? null);
+  }, []);
 
   const enrich = useCallback(async (match: Match): Promise<FeedItem> => {
     const supabase = getSupabase();
@@ -115,6 +123,16 @@ export default function ResonanceFeed({ large }: { large?: boolean }) {
             <p className="mt-1 text-xs text-white/40">
               共鳴度 {(Number(item.score) * 100).toFixed(0)}%
             </p>
+            {!large &&
+              me &&
+              (me === item.participant_id_a || me === item.participant_id_b) && (
+                <Link
+                  href={`/quest/${item.id}`}
+                  className="mt-3 inline-block rounded-full border border-white/25 px-4 py-1.5 text-xs text-white/80"
+                >
+                  この感情を探索する →
+                </Link>
+              )}
           </div>
         </div>
       ))}
