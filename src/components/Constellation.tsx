@@ -54,8 +54,44 @@ const CLUSTER_RING_SIZE = 6;
 const CENTROID_PULL = 0.15;
 // meIdがないとき（/screen）にラベルを出す共鳴の数
 const SCREEN_LABEL_LIMIT = 2;
-// 近すぎるラベルは重なって読めないので間引く距離
-const LABEL_MIN_DISTANCE = 140;
+// ラベルの避け先の上下幅
+const LABEL_OFFSETS = [-14, -70, 42, -126, 98, -182, 154] as const;
+// 文字同士をこれだけ離す
+const TEXT_PADDING = 8;
+
+// 点の大きさと、その下に出すニックネームの位置
+function dotRadius(n: LayoutNode, isMe: boolean) {
+  return isMe ? 14 : 8 + Math.min(6, n.response_count);
+}
+function nicknameOffset(n: LayoutNode, isMe: boolean, large?: boolean) {
+  return dotRadius(n, isMe) + (large ? 24 : 20);
+}
+
+// 文字列の占める箱（全角はほぼfontSize、半角はその半分として見積もる）
+type TextBox = { left: number; right: number; top: number; bottom: number };
+function textBox(
+  x: number,
+  y: number,
+  text: string,
+  fontSize: number,
+): TextBox {
+  const width = [...text].reduce(
+    (sum, c) => sum + (/[\u0020-\u007e]/.test(c) ? 0.55 : 1) * fontSize,
+    0,
+  );
+  return {
+    left: x - width / 2 - TEXT_PADDING,
+    right: x + width / 2 + TEXT_PADDING,
+    top: y - fontSize - TEXT_PADDING,
+    bottom: y + fontSize * 0.3 + TEXT_PADDING,
+  };
+}
+// 重なっている面積（0ならひとつも重ならない）
+function overlapArea(a: TextBox, b: TextBox) {
+  const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  return w > 0 && h > 0 ? w * h : 0;
+}
 
 // 感情ハブを上・右下・左下の順に等間隔で置く（横長なら左右に引き伸ばす）
 function buildPoles(tones: GraphTone[], rx: number, ry: number): Pole[] {
@@ -266,11 +302,22 @@ export default function Constellation({
       .force(
         "collide",
         forceCollide<SimNode>((d) =>
-          "hub" in d ? hubRadius * 0.45 + nodeRadius : nodeRadius,
+          "hub" in d
+            ? hubRadius * 0.45 + nodeRadius
+            : // 長い名前ほど横に広いので、その分だけ縄張りを広げる
+              nodeRadius + Math.min(40, d.nickname.length * (large ? 6 : 5)),
         ),
       )
       .stop()
       .tick(300);
+
+    // 輪や衝突で押し出されたviewBoxの外に点と名前が切れるのを防ぐ
+    const limitX = viewWidth / 2 - nodeRadius;
+    const limitY = VIEW_HEIGHT / 2 - nodeRadius;
+    for (const n of nodes) {
+      n.x = Math.max(-limitX, Math.min(limitX, n.x ?? 0));
+      n.y = Math.max(-limitY, Math.min(limitY, n.y ?? 0));
+    }
 
     const byId = new Map(nodes.map((n) => [n.id, n]));
     const matched: GraphEdge[] = graph.edges.filter(
@@ -293,18 +340,30 @@ export default function Constellation({
   const focused = focus
     ? { a: layout.byId.get(focus.a), b: layout.byId.get(focus.b) }
     : null;
+  // 離れたペアだと2.2倍では両方が画面外に出てしまうので、2人が収まる倍率まで落とす
   const zoom =
     focused?.a && focused?.b
       ? {
           x: ((focused.a.x ?? 0) + (focused.b.x ?? 0)) / 2,
           y: ((focused.a.y ?? 0) + (focused.b.y ?? 0)) / 2,
+          scale: Math.max(
+            1,
+            Math.min(
+              FOCUS_SCALE,
+              (layout.viewWidth * 0.7) /
+                Math.max(1, Math.abs((focused.a.x ?? 0) - (focused.b.x ?? 0))),
+              (VIEW_HEIGHT * 0.7) /
+                Math.max(1, Math.abs((focused.a.y ?? 0) - (focused.b.y ?? 0))),
+            ),
+          ),
         }
       : null;
   const isFocused = (id: string) => !!focus && (focus.a === id || focus.b === id);
   const isMine = (l: GraphEdge) => !!meId && (l.a === meId || l.b === meId);
 
   // 成立したペアは多いので、ラベルは「自分の共鳴」「いま光った共鳴」「共鳴度が高いもの」に絞る。
-  // 近すぎるものは文字が重なって読めなくなるので間引く
+  // 他のラベルやニックネームと重なるときは上下に逃がし、逃げないものだけ間引く
+  // （自分の共鳴と光った共鳴は消さない）
   const labeled = useMemo(() => {
     const relevant = layout.matched.filter(
       (l) =>
@@ -320,22 +379,52 @@ export default function Constellation({
       ? relevant
       : [...relevant, ...rest.slice(0, SCREEN_LABEL_LIMIT)];
 
-    const placed: { x: number; y: number }[] = [];
-    return candidates.filter((l) => {
+    // ニックネームは点の下、感情名はハブの上に出ているので、その箱を先に埋めておく
+    const nameSize = large ? 22 : 18;
+    const taken = [
+      ...layout.nodes.map((n) => {
+        const isMe = n.id === meId;
+        return textBox(
+          n.x ?? 0,
+          (n.y ?? 0) + nicknameOffset(n, isMe, large),
+          isMe ? `${n.nickname}（あなた）` : n.nickname,
+          nameSize,
+        );
+      }),
+      ...layout.poles.map((p) =>
+        textBox(p.x, p.y + (large ? 12 : 10), p.label, large ? 30 : 26),
+      ),
+    ];
+
+    const placed: { edge: GraphEdge; x: number; y: number }[] = [];
+    for (const l of candidates) {
       const a = layout.byId.get(l.a)!;
       const b = layout.byId.get(l.b)!;
       const mid = {
         x: ((a.x ?? 0) + (b.x ?? 0)) / 2,
         y: ((a.y ?? 0) + (b.y ?? 0)) / 2,
       };
-      const clash = placed.some(
-        (p) => Math.hypot(p.x - mid.x, p.y - mid.y) < LABEL_MIN_DISTANCE,
-      );
-      if (clash) return false;
-      placed.push(mid);
-      return true;
-    });
-  }, [layout, meId, focus]);
+      const tone = l.decisive_tone_id
+        ? layout.poleById.get(l.decisive_tone_id)
+        : null;
+      const score = Math.round((l.score ?? l.resonance) * 100);
+      const text = tone ? `${score}% ・ ${tone.label}` : `${score}%`;
+      // 上下に逃げ先を探し、どこも空いていなければ一番重なりの少ない場所を使う
+      const spots = LABEL_OFFSETS.map((dy) => {
+        const y = mid.y + dy;
+        const box = textBox(mid.x, y, text, nameSize);
+        const overlap = taken.reduce((sum, t) => sum + overlapArea(box, t), 0);
+        return { y, box, overlap };
+      });
+      const free = spots.find((s) => s.overlap === 0);
+      if (!free && !relevant.includes(l)) continue;
+      const spot =
+        free ?? spots.reduce((best, s) => (s.overlap < best.overlap ? s : best));
+      taken.push(spot.box);
+      placed.push({ edge: l, x: mid.x, y: spot.y });
+    }
+    return placed;
+  }, [layout, meId, focus, large]);
 
   return (
     <div ref={containerRef} className={className ?? "h-full w-full"}>
@@ -352,7 +441,7 @@ export default function Constellation({
           <g
             style={{
               transform: zoom
-                ? `scale(${FOCUS_SCALE}) translate(${-zoom.x}px, ${-zoom.y}px)`
+                ? `scale(${zoom.scale}) translate(${-zoom.x}px, ${-zoom.y}px)`
                 : "none",
               transition: "transform 1.2s ease-in-out",
             }}
@@ -438,7 +527,7 @@ export default function Constellation({
               const color = n.dominantToneId
                 ? layout.poleById.get(n.dominantToneId)!.color
                 : "#A78BC9";
-              const base = isMe ? 14 : 8 + Math.min(6, n.response_count);
+              const base = dotRadius(n, isMe);
               const r = highlighted ? base * 1.8 : base;
               return (
                 <g key={n.id}>
@@ -482,9 +571,7 @@ export default function Constellation({
             })}
 
             {/* 成立したペアの線に「共鳴度％＋どの感情で共鳴したか」を出す */}
-            {labeled.map((l) => {
-              const a = layout.byId.get(l.a)!;
-              const b = layout.byId.get(l.b)!;
+            {labeled.map(({ edge: l, x, y }) => {
               const tone = l.decisive_tone_id
                 ? layout.poleById.get(l.decisive_tone_id)
                 : null;
@@ -492,8 +579,8 @@ export default function Constellation({
               return (
                 <text
                   key={`match-label-${l.a}-${l.b}`}
-                  x={((a.x ?? 0) + (b.x ?? 0)) / 2}
-                  y={((a.y ?? 0) + (b.y ?? 0)) / 2 - 6}
+                  x={x}
+                  y={y}
                   textAnchor="middle"
                   fill="#F2A65A"
                   fontSize={large ? 22 : 18}
