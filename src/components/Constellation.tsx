@@ -311,10 +311,13 @@ export default function Constellation({
       .stop()
       .tick(300);
 
-    // 輪や衝突で押し出されたviewBoxの外に点と名前が切れるのを防ぐ
-    const limitX = viewWidth / 2 - nodeRadius;
+    // 輪や衝突で押し出されたviewBoxの外に点と名前が切れるのを防ぐ。
+    // 名前は点より横に広いので、名前の幅で内側に寄せる
+    const nameSize = large ? 22 : 18;
     const limitY = VIEW_HEIGHT / 2 - nodeRadius;
     for (const n of nodes) {
+      const name = textBox(0, 0, n.nickname, nameSize);
+      const limitX = viewWidth / 2 - Math.max(nodeRadius, name.right);
       n.x = Math.max(-limitX, Math.min(limitX, n.x ?? 0));
       n.y = Math.max(-limitY, Math.min(limitY, n.y ?? 0));
     }
