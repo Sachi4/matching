@@ -27,9 +27,34 @@ deployed there — it is much faster and matches what the user sees. Use the loc
 2. After a migration change: `npx supabase@latest db reset`.
 3. `npx supabase@latest functions serve` (no positional function name on CLI ≥2.114).
 4. `.env.local` → `http://127.0.0.1:54321` + local anon key. `npm run dev`.
-   `Cannot find module './NNN.js'` → kill dev, `rm -rf .next`, restart.
+   `Cannot find module './NNN.js'` → kill dev, `rm -rf .next`, restart (then Ctrl+Shift+R the tab, or it renders unstyled).
+   Pitfall: if the shell already exports LIVE `NEXT_PUBLIC_SUPABASE_*`, those win over `.env.local` and pages silently
+   show live data. Start dev with the local vars inline
+   (`env NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=<local> setsid nohup npm run dev &`)
+   and confirm the participants on `/screen` are the local ones. Start the stack detached too
+   (`setsid nohup npx supabase@latest start </dev/null &`); on
+   `container name "/supabase_db_matching" is already in use` run
+   `docker ps -a --format '{{.Names}}' | grep supabase | xargs -r docker rm -f` first.
+   If the local service_role key lacks grants (`permission denied for table debug_config`), skip REST and use psql
+   (`update app_settings set value=1 where key='test_mode';`).
+5. `matches` has `matches_pair_unique` on (a,b): to trigger another burst pick a pair that has no row yet, and keep
+   `participant_id_a` < `participant_id_b` ordering consistent with existing rows.
 - Supabase API :54321, DB `postgresql://postgres:postgres@127.0.0.1:54322/postgres`, Studio :54323.
 - DB queries: `docker exec supabase_db_matching psql -U postgres -d postgres -c "..."`.
+
+## Verifying the venue screen (/screen) layout and the post-burst zoom
+- Set the display to the venue resolution before judging layout: `xrandr --output VNC-0 --mode 1920x1080`, maximize with
+  `wmctrl -r :ACTIVE: -b add,maximized_vert,maximized_horz`, and F11 for a true 1920x1080 viewport.
+- The map `<svg>` is `h-full w-full` with a 1:1 viewBox; inside a `flex-1` parent with no resolved height it grows to a
+  full-width SQUARE (1823px at 1920px wide) and pushes anything below it off the fold. Always assert
+  `document.documentElement.scrollHeight <= innerHeight` on `/screen`, not just "it looks fine", and remember browser
+  zoom does not change that ratio.
+- The post-burst focus lasts only ~5 s after dismissal and a screenshot round-trip can miss it. Install a 100 ms
+  `setInterval` poller BEFORE inserting the match that records the map `<g>`'s `style.transform` and the `#D85A30`
+  circles (plus their `getBoundingClientRect`, to prove the focused dots are actually inside the viewport); expected
+  `scale(2.2) translate(...)` = negative midpoint of the two focused nodes, dots r≈19 filled `#D85A30` with r≈29 rings.
+- Map labels: `svg.textContent` should contain only the 3 hub labels (and nicknames when `large`) — reaction phrases
+  belong on cards/burst only.
 
 ## Test mode / debug UI
 - `app_settings.test_mode` (value 1 = ON) gates `/admin/test`; passphrase = `debug_config.token`, default `kyomei-debug`.
