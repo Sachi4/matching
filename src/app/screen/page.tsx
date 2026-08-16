@@ -1,24 +1,33 @@
 "use client";
 
-import CollectiveCanvas from "@/components/CollectiveCanvas";
+import Constellation from "@/components/Constellation";
+import ResonanceBurst from "@/components/ResonanceBurst";
 import ResonanceFeed from "@/components/ResonanceFeed";
 
-// 会場の大画面用ビュー: 集合アートを背景いっぱいに、共鳴フィードを重ねて表示する
+// 会場の大画面用ビュー: 共鳴マップを全幅で主役にし、その下に共鳴カードを並べる。
+// 共鳴が生まれた瞬間は画面全体をバースト演出が数秒だけ乗っ取る（音は鳴らさない）。
 export default function ScreenPage() {
   return (
-    <main className="relative min-h-screen overflow-hidden">
-      <div className="absolute inset-0">
-        <CollectiveCanvas className="h-full w-full" />
-      </div>
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-8 py-12">
+    <main className="relative h-screen overflow-hidden bg-[#0b0a11]">
+      <div className="relative z-10 flex h-screen flex-col gap-6 px-10 py-8">
         <div className="text-center">
           <p className="text-sm tracking-widest text-violet-300/70">
             運命の出会いを科学する
           </p>
-          <h1 className="mt-2 text-4xl font-bold">共鳴フィード</h1>
+          <h1 className="mt-1 text-4xl font-bold">共鳴マップ</h1>
         </div>
-        <ResonanceFeed large />
+        {/* 正方形のsvgに高さを決めさせると画面からはみ出すので、
+            高さは親のflexで決め、svgは絶対配置で埋める */}
+        <div className="relative min-h-0 flex-1 rounded-3xl border border-white/10 bg-black/30">
+          <Constellation meId={null} large className="absolute inset-0" />
+        </div>
+        <div className="shrink-0">
+          <p className="mb-2 text-sm text-white/60">生まれた共鳴</p>
+          <ResonanceFeed layout="carousel" limit={5} large />
+        </div>
       </div>
+      {/* 会場の大画面はページ遷移せず、この画面の共鳴マップをそのままズームさせる */}
+      <ResonanceBurst focusPath={null} />
     </main>
   );
 }

@@ -1,5 +1,6 @@
-// トーンの診断回答が終わったタイミングで共鳴判定を行うEdge Function
-// 閾値を超えたペアを matches にinsertし、decisive_tone を使って反応名を生成する
+// 感想のembeddingが生成されたタイミングで共鳴判定を行うEdge Function
+// 共鳴度は感想文embeddingの類似度のみ。閾値を超えたペアを matches にinsertし、
+// decisive_tone を使って反応名を生成する
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 // 本番ではALLOWED_ORIGINにフロントのオリジンを設定して呼び出し元を制限する
@@ -95,7 +96,7 @@ Deno.serve(async (req) => {
       .select("value")
       .eq("key", "match_threshold")
       .single();
-    const matchThreshold = Number(threshold?.value ?? 0.9);
+    const matchThreshold = Number(threshold?.value ?? 0.55);
 
     const { data: candidates, error: rpcError } = await supabase.rpc(
       "find_resonance_candidates",
