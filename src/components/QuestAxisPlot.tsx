@@ -10,6 +10,11 @@ export type PlotPoint = {
 };
 
 // L2の2軸平面。二人の点の距離がそのまま「感じ方のずれ」の可視化になる
+// 0〜100% を 14〜86% に写して、軸ラベルとの衝突とはみ出しを防いでいる
+function inset(percent: number): number {
+  return 14 + (percent / 100) * 72;
+}
+
 export default function QuestAxisPlot({
   emotion,
   points,
@@ -35,13 +40,14 @@ export default function QuestAxisPlot({
         {emotion.axisY.negative}
       </span>
 
+      {/* 端の値でも点とラベルが枠にかからないよう、内側に縮めてプロットする */}
       {points.map((p) => (
         <div
           key={p.label}
           className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1"
           style={{
-            left: `${axisToPercent(p.x)}%`,
-            top: `${100 - axisToPercent(p.y)}%`,
+            left: `${inset(axisToPercent(p.x))}%`,
+            top: `${inset(100 - axisToPercent(p.y))}%`,
           }}
         >
           <span

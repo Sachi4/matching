@@ -65,6 +65,9 @@ insert into public.app_settings (key, value, description) values
 -- 共鳴 = L1一致率(Jaccard) × w1 + (1 - L2正規化距離) × w2 + L3テキスト類似度 × w3
 -- 対比 = 1 - 共鳴。ただし「記述は近いのに2軸が遠い」ペアは深い差として加点する
 -- 解像度 = 両者がそろったレイヤー数
+--
+-- embedding は anon に見せたくないので quest_turn_embeddings には読み取りポリシーを置かず、
+-- この関数を security definer にして類似度だけを返す
 create or replace function public.compute_quest_result(p_session_id uuid)
 returns table (
   l1_overlap double precision,
@@ -76,6 +79,8 @@ returns table (
 )
 language sql
 stable
+security definer
+set search_path = public
 as $$
   with cfg as (
     select
@@ -188,7 +193,8 @@ create policy "anon read quest sessions" on public.quest_sessions for select usi
 create policy "anon insert quest sessions" on public.quest_sessions for insert with check (true);
 create policy "anon update quest sessions" on public.quest_sessions for update using (true);
 
--- quest_turns / embeddings への書き込みは Edge Function（service role）経由のみ
+-- quest_turns / embeddings への書き込みは Edge Function（service role）経由のみ。
+-- quest_turn_embeddings は読み取りポリシーも置かない（compute_quest_result 経由でのみ使う）
 create policy "anon read quest turns" on public.quest_turns for select using (true);
 
 create policy "anon read quest shared terms" on public.quest_shared_terms for select using (true);

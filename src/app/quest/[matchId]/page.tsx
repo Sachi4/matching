@@ -78,7 +78,26 @@ export default function QuestPage() {
       setNicknames(
         Object.fromEntries((people ?? []).map((p) => [p.id, p.nickname])),
       );
-      setSessions((sess ?? []) as QuestSession[]);
+      const sessionList = (sess ?? []) as QuestSession[];
+      setSessions(sessionList);
+
+      // リロードしても進行中の探索に戻る（相手を待っている途中で
+      // 感情選択に戻されないように、自分がすでに答えた active セッションを開き直す）
+      const activeIds = sessionList
+        .filter((s) => s.status === "active")
+        .map((s) => s.id);
+      if (stored && activeIds.length > 0) {
+        const { data: myTurns } = await supabase
+          .from("quest_turns")
+          .select("session_id")
+          .eq("participant_id", stored.id)
+          .in("session_id", activeIds);
+        const answered = new Set((myTurns ?? []).map((t) => t.session_id));
+        const resume = [...sessionList]
+          .reverse()
+          .find((s) => answered.has(s.id));
+        if (resume) setSession(resume);
+      }
       setLoading(false);
     })();
   }, [matchId]);
@@ -266,7 +285,7 @@ export default function QuestPage() {
         <header>
           <p className="text-xs text-white/40">共鳴のあとの探索</p>
           <h1 className="mt-1 text-2xl font-bold">
-            {partnerName} と、どの感情を掘りますか？
+            {partnerName}と、どの感情を掘りますか？
           </h1>
           {match?.reaction_phrase && (
             <p className="mt-2 text-sm text-white/50">
@@ -330,7 +349,7 @@ export default function QuestPage() {
       <header className="flex items-start justify-between">
         <div>
           <p className="text-xs text-white/40">
-            {emotion.label} の探索 ・ {partnerName} と
+            {emotion.label}の探索 ・ {partnerName}と
           </p>
           <h1 className="mt-1 text-xl font-bold">
             {LAYER_TITLES[layer].title}
@@ -372,7 +391,7 @@ export default function QuestPage() {
       {myTurn && !revealed && (
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-8 text-center">
           <p className="text-sm text-white/70">
-            {partnerName} が書き終えるのを待っています
+            {partnerName}が書き終えるのを待っています
           </p>
           <p className="mt-2 text-xs text-white/40">
             そろった瞬間に、二人の答えが同時に開きます

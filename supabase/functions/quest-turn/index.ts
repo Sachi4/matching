@@ -143,17 +143,25 @@ async function generateSharedTerm(
   return fallbackTerm(emotionLabel, sideA, sideB);
 }
 
+// 語の途中で切れて日本語が崩れないよう、句読点か助詞の境目で切る
+function clause(text: string): string {
+  const head = text.split(/[、。！？\n]/)[0].trim();
+  if (head.length <= 6) return head;
+  const window = head.slice(0, 9);
+  const boundary = Math.max(
+    ...[..."はがをにでとへのも"].map((p) => window.lastIndexOf(p)),
+  );
+  return boundary >= 2 ? head.slice(0, boundary) : head.slice(0, 6);
+}
+
 function fallbackTerm(
   emotionLabel: string,
   sideA: string,
   sideB: string,
 ): { term: string; description: string } {
-  const frag = (t: string) => {
-    const source = t.split("出どころ: ")[1] ?? t;
-    return source.replace(/[、。！？\s,.!?]/g, "").slice(0, 4) || "ゆらぎ";
-  };
+  const frag = (t: string) => clause(t.split("出どころ: ")[1] ?? t) || "ゆらぎ";
   return {
-    term: `${frag(sideA)}${frag(sideB)}`,
+    term: `${frag(sideA)}と${frag(sideB)}`,
     description: `二人の${emotionLabel}が重なったところ`,
   };
 }
