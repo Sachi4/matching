@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Match } from "@/lib/types";
 
-// 共鳴演出に必要な材料（2人のニックネームと決め手のトーン）をまとめて取る
+// 共鳴演出に必要な材料（2人のニックネームとカードの色に使うトーン）をまとめて取る
 export type MatchDetail = {
   match: Match;
   toneLabel: string | null;

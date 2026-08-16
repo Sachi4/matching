@@ -3,16 +3,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   forceCollide,
-  forceLink,
   forceManyBody,
   forceSimulation,
   forceX,
   forceY,
-  type SimulationLinkDatum,
   type SimulationNodeDatum,
 } from "d3-force";
 import { getSupabase } from "@/lib/supabase";
-import { EMPTY_GRAPH, type GraphEdge, type ResonanceGraph } from "@/lib/graph";
+import {
+  EMPTY_GRAPH,
+  type GraphEdge,
+  type GraphTone,
+  type ResonanceGraph,
+} from "@/lib/graph";
+import { tonePalette } from "@/lib/tones";
 import {
   FOCUS_DURATION,
   FOCUS_EVENT,
@@ -23,27 +27,40 @@ import {
 type LayoutNode = SimulationNodeDatum & {
   id: string;
   nickname: string;
-  is_test: boolean;
   response_count: number;
+  toneWeights: [string, number][];
+  dominantToneId: string | null;
+  // 3感情の重心（この点に引き寄せられる）
+  ax: number;
+  ay: number;
 };
 
-type LayoutLink = SimulationLinkDatum<LayoutNode> & GraphEdge;
+type Pole = GraphTone & { x: number; y: number; color: string };
 
 const VIEW = 1000;
+// 感情ハブを置く三角形の外接円半径
+const POLE_RADIUS = 300;
 // 共鳴した2人にズームするときの倍率
 const FOCUS_SCALE = 2.2;
+// これ未満の寄りは線を描かない（3本とも薄く出ると三角形が潰れて見える）
+const MIN_LINK_WEIGHT = 0.12;
 
-// 共鳴度が高いほど近くに置く（似ている＝近い）。
-// proximity（全ペアの中での相対値）があればそれを使い、無ければ生の共鳴度を使う
-function linkDistance(edge: GraphEdge): number {
-  const t =
-    edge.proximity ??
-    Math.min(1, Math.max(0, (edge.resonance - 0.15) / 0.65));
-  return 420 - 340 * t;
+// 感情ハブを上・右下・左下の順に等間隔で置く
+function buildPoles(tones: GraphTone[]): Pole[] {
+  return tones.map((tone, i) => {
+    const angle = (-90 + (i * 360) / Math.max(1, tones.length)) * (Math.PI / 180);
+    return {
+      ...tone,
+      x: Math.cos(angle) * POLE_RADIUS,
+      y: Math.sin(angle) * POLE_RADIUS,
+      color: tonePalette(tone.label)[0],
+    };
+  });
 }
 
-// レイヤー3: 自分を中心に、似ている人ほど近くに配置した星座。
-// 座標はバックエンドがキャッシュした類似度をもとに、グラフが更新されたときだけ計算する。
+// レイヤー3: 高揚感・悲しみ・怒りの3つのハブの周囲に参加者を配置した共鳴マップ。
+// 参加者は「どの感情でいちばん響き合ったか」の重みで3ハブの重心に置かれるため、
+// 特定の感情に強く寄っている人はそのハブの近くに、まんべんなく響く人は中央に集まる。
 export default function Constellation({
   meId,
   large,
@@ -109,64 +126,78 @@ export default function Constellation({
 
   // グラフが更新されたときだけレイアウトし直す（毎フレームの再計算はしない）
   const layout = useMemo(() => {
-    const nodes: LayoutNode[] = graph.nodes.map((n) => ({
-      ...n,
-      x: 0,
-      y: 0,
-    }));
-    const byId = new Map(nodes.map((n) => [n.id, n]));
-    const links: LayoutLink[] = graph.edges
-      .filter((e) => byId.has(e.a) && byId.has(e.b))
-      .map((e) => ({ ...e, source: e.a, target: e.b }));
+    const poles = buildPoles(graph.tones ?? []);
+    const poleById = new Map(poles.map((p) => [p.id, p]));
 
-    const me = meId ? byId.get(meId) : undefined;
-    if (me) {
-      me.fx = 0;
-      me.fy = 0;
-    }
-    // 自分がいない（大画面ビューなど）ときは、共鳴が多い人を中心に寄せる
-    nodes.forEach((n, i) => {
-      const angle = (i / Math.max(1, nodes.length)) * Math.PI * 2;
-      n.x = Math.cos(angle) * 200;
-      n.y = Math.sin(angle) * 200;
+    const nodes: LayoutNode[] = graph.nodes.map((n, i) => {
+      const weights = Object.entries(n.tone_weights ?? {}).filter(([id]) =>
+        poleById.has(id),
+      );
+      const total = weights.reduce((sum, [, w]) => sum + w, 0);
+      const strongest = [...weights].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+      // トーン情報が無い（古いキャッシュ）ときは円周に均等に置くだけにする
+      const fallbackAngle =
+        (i / Math.max(1, graph.nodes.length)) * Math.PI * 2;
+      const anchor =
+        total > 0
+          ? weights.reduce(
+              (acc, [id, w]) => {
+                const pole = poleById.get(id)!;
+                return {
+                  x: acc.x + (pole.x * w) / total,
+                  y: acc.y + (pole.y * w) / total,
+                };
+              },
+              { x: 0, y: 0 },
+            )
+          : {
+              x: Math.cos(fallbackAngle) * POLE_RADIUS * 0.6,
+              y: Math.sin(fallbackAngle) * POLE_RADIUS * 0.6,
+            };
+
+      return {
+        id: n.id,
+        nickname: n.nickname,
+        response_count: n.response_count,
+        toneWeights: weights.map(([id, w]) => [id, total > 0 ? w / total : 0]),
+        dominantToneId:
+          n.dominant_tone_id && poleById.has(n.dominant_tone_id)
+            ? n.dominant_tone_id
+            : strongest,
+        ax: anchor.x,
+        ay: anchor.y,
+        x: anchor.x,
+        y: anchor.y,
+      };
     });
 
+    // 重心が同じ人同士が重なるので、アンカーに引き寄せつつ衝突だけ解く
     forceSimulation(nodes)
       .force(
-        "link",
-        forceLink<LayoutNode, LayoutLink>(links)
-          .id((d) => d.id)
-          .distance((l) => linkDistance(l))
-          .strength((l) => (l.matched ? 0.9 : 0.35)),
+        "x",
+        forceX<LayoutNode>((d) => d.ax).strength(0.6),
       )
-      .force("charge", forceManyBody().strength(-160))
-      .force("collide", forceCollide(28))
-      .force("x", forceX(0).strength(0.04))
-      .force("y", forceY(0).strength(0.04))
+      .force(
+        "y",
+        forceY<LayoutNode>((d) => d.ay).strength(0.6),
+      )
+      .force("charge", forceManyBody().strength(-24))
+      .force("collide", forceCollide(large ? 26 : 22))
       .stop()
-      .tick(400);
+      .tick(300);
 
-    const maxR =
-      Math.max(
-        1,
-        ...nodes.map((n) => Math.hypot(n.x ?? 0, n.y ?? 0)),
-      ) || 1;
-    const scale = (VIEW / 2 - 60) / maxR;
-    for (const n of nodes) {
-      n.x = (n.x ?? 0) * scale;
-      n.y = (n.y ?? 0) * scale;
-    }
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const matched: GraphEdge[] = graph.edges.filter(
+      (e) => e.matched && byId.has(e.a) && byId.has(e.b),
+    );
 
-    return { nodes, links, byId };
-  }, [graph, meId]);
+    return { poles, poleById, nodes, byId, matched };
+  }, [graph, large]);
 
   const hasData = layout.nodes.length > 0;
 
   const focused = focus
-    ? {
-        a: layout.byId.get(focus.a),
-        b: layout.byId.get(focus.b),
-      }
+    ? { a: layout.byId.get(focus.a), b: layout.byId.get(focus.b) }
     : null;
   const zoom =
     focused?.a && focused?.b
@@ -181,13 +212,13 @@ export default function Constellation({
     <div ref={containerRef} className={className ?? "h-full w-full"}>
       {!hasData ? (
         <p className="flex h-full items-center justify-center text-center text-sm text-white/40">
-          まだ星がありません。感想が集まると、ここに広がります。
+          まだ誰もいません。感想が集まると、3つの感情のまわりに広がります。
         </p>
       ) : (
         <svg
           viewBox={`${-VIEW / 2} ${-VIEW / 2} ${VIEW} ${VIEW}`}
           className="h-full w-full"
-          aria-label="共鳴の星座"
+          aria-label="3つの感情の周囲に広がる共鳴マップ"
         >
           <g
             style={{
@@ -197,106 +228,145 @@ export default function Constellation({
               transition: "transform 1.2s ease-in-out",
             }}
           >
-          {layout.links.map((l) => {
-            const a = l.source as LayoutNode;
-            const b = l.target as LayoutNode;
-            return (
-              <line
-                key={`${l.a}-${l.b}`}
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                stroke={l.matched ? "#F2A65A" : "#A78BC9"}
-                strokeWidth={l.matched ? 4 : 1}
-                strokeOpacity={
-                  l.matched ? 0.9 : 0.12 + (l.proximity ?? l.resonance) * 0.2
-                }
-                className={l.matched ? "animate-resonance-line" : undefined}
+            {/* 感情ハブの領域（どのあたりがどの感情かを色で示す） */}
+            {layout.poles.map((pole) => (
+              <circle
+                key={`field-${pole.id}`}
+                cx={pole.x}
+                cy={pole.y}
+                r={210}
+                fill={pole.color}
+                fillOpacity={0.07}
               />
-            );
-          })}
+            ))}
 
-          {layout.links
-            .filter((l) => l.matched && l.reaction_phrase)
-            .map((l) => {
-              const a = l.source as LayoutNode;
-              const b = l.target as LayoutNode;
+            {/* 参加者 → 感情ハブ。寄りが強い感情ほど濃い線でつながる */}
+            {layout.nodes.flatMap((n) =>
+              n.toneWeights
+                .filter(([, w]) => w >= MIN_LINK_WEIGHT)
+                .map(([toneId, w]) => {
+                  const pole = layout.poleById.get(toneId)!;
+                  return (
+                    <line
+                      key={`tone-${n.id}-${toneId}`}
+                      x1={n.x}
+                      y1={n.y}
+                      x2={pole.x}
+                      y2={pole.y}
+                      stroke={pole.color}
+                      strokeWidth={1}
+                      strokeOpacity={focus ? 0.06 : 0.1 + w * 0.35}
+                    />
+                  );
+                }),
+            )}
+
+            {/* 共鳴が成立したペア */}
+            {layout.matched.map((l) => {
+              const a = layout.byId.get(l.a)!;
+              const b = layout.byId.get(l.b)!;
               return (
-                <text
-                  key={`label-${l.a}-${l.b}`}
-                  x={((a.x ?? 0) + (b.x ?? 0)) / 2}
-                  y={((a.y ?? 0) + (b.y ?? 0)) / 2 - 8}
-                  textAnchor="middle"
-                  fill="#F2D14E"
-                  fontSize={large ? 22 : 18}
-                >
-                  「{l.reaction_phrase}」
-                </text>
+                <line
+                  key={`match-${l.a}-${l.b}`}
+                  x1={a.x}
+                  y1={a.y}
+                  x2={b.x}
+                  y2={b.y}
+                  stroke="#F2A65A"
+                  strokeWidth={4}
+                  strokeOpacity={0.9}
+                  className="animate-resonance-line"
+                />
               );
             })}
 
-          {layout.nodes.map((n) => {
-            const isMe = n.id === meId;
-            const matched = layout.links.some(
-              (l) => l.matched && (l.a === n.id || l.b === n.id),
-            );
-            const highlighted = isFocused(n.id);
-            const base = isMe ? 16 : 9 + Math.min(6, n.response_count);
-            const r = highlighted ? base * 1.8 : base;
-            return (
-              <g key={n.id}>
-                {highlighted && (
-                  <circle
-                    cx={n.x}
-                    cy={n.y}
-                    r={r + 14}
-                    fill="none"
-                    stroke="#D85A30"
-                    strokeWidth={4}
-                  />
-                )}
-                {isMe && (
-                  <circle
-                    cx={n.x}
-                    cy={n.y}
-                    r={r + 12}
-                    fill="none"
-                    stroke="#ffffff"
-                    strokeOpacity={0.35}
-                  />
-                )}
+            {/* 感情ハブ本体 */}
+            {layout.poles.map((pole) => (
+              <g key={pole.id}>
                 <circle
-                  cx={n.x}
-                  cy={n.y}
-                  r={r}
-                  fill={
-                    highlighted
-                      ? "#D85A30"
-                      : isMe
-                        ? "#ffffff"
-                        : matched
-                          ? "#F2A65A"
-                          : "#A78BC9"
-                  }
-                  fillOpacity={
-                    highlighted ? 1 : isMe ? 1 : matched ? 0.95 : focus ? 0.25 : 0.6
-                  }
+                  cx={pole.x}
+                  cy={pole.y}
+                  r={large ? 34 : 30}
+                  fill={pole.color}
+                  fillOpacity={0.9}
                 />
-                {(isMe || matched || large || highlighted) && (
-                  <text
-                    x={n.x}
-                    y={(n.y ?? 0) + r + (large ? 24 : 20)}
-                    textAnchor="middle"
-                    fill={isMe ? "#ffffff" : "rgba(255,255,255,0.6)"}
-                    fontSize={large ? 20 : 16}
-                  >
-                    {isMe ? `${n.nickname}（あなた）` : n.nickname}
-                  </text>
-                )}
+                <text
+                  x={pole.x}
+                  y={pole.y + (large ? 12 : 10)}
+                  textAnchor="middle"
+                  fill="#16141f"
+                  fontSize={large ? 30 : 26}
+                  fontWeight={700}
+                >
+                  {pole.label}
+                </text>
               </g>
-            );
-          })}
+            ))}
+
+            {layout.nodes.map((n) => {
+              const isMe = n.id === meId;
+              const highlighted = isFocused(n.id);
+              const color = n.dominantToneId
+                ? layout.poleById.get(n.dominantToneId)!.color
+                : "#A78BC9";
+              const base = isMe ? 14 : 8 + Math.min(6, n.response_count);
+              const r = highlighted ? base * 1.8 : base;
+              return (
+                <g key={n.id}>
+                  {(isMe || highlighted) && (
+                    <circle
+                      cx={n.x}
+                      cy={n.y}
+                      r={r + 10}
+                      fill="none"
+                      stroke={highlighted ? "#D85A30" : "#ffffff"}
+                      strokeOpacity={highlighted ? 1 : 0.4}
+                      strokeWidth={highlighted ? 4 : 1}
+                    />
+                  )}
+                  <circle
+                    cx={n.x}
+                    cy={n.y}
+                    r={r}
+                    fill={highlighted ? "#D85A30" : isMe ? "#ffffff" : color}
+                    fillOpacity={
+                      highlighted || isMe ? 1 : focus ? 0.25 : 0.85
+                    }
+                  />
+                  {(isMe || large || highlighted) && (
+                    <text
+                      x={n.x}
+                      y={(n.y ?? 0) + r + (large ? 22 : 18)}
+                      textAnchor="middle"
+                      fill={isMe ? "#ffffff" : "rgba(255,255,255,0.6)"}
+                      fontSize={large ? 20 : 16}
+                    >
+                      {isMe ? `${n.nickname}（あなた）` : n.nickname}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+
+            {/* 成立したペアの反応名は、点より前面に出す */}
+            {layout.matched
+              .filter((l) => l.reaction_phrase)
+              .map((l) => {
+                const a = layout.byId.get(l.a)!;
+                const b = layout.byId.get(l.b)!;
+                return (
+                  <text
+                    key={`label-${l.a}-${l.b}`}
+                    x={((a.x ?? 0) + (b.x ?? 0)) / 2}
+                    y={((a.y ?? 0) + (b.y ?? 0)) / 2 - 8}
+                    textAnchor="middle"
+                    fill="rgba(255,255,255,0.45)"
+                    fontSize={large ? 16 : 13}
+                  >
+                    {l.reaction_phrase}
+                  </text>
+                );
+              })}
           </g>
         </svg>
       )}

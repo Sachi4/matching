@@ -135,7 +135,7 @@ export default function TestModePage() {
           <p className="text-xs text-white/50">
             計算ロジックを経由せず matches に直接insertします。
             共鳴フィードの表示とRealtime反映だけを切り離して確認できます
-            （感想がないダミーなので、星座には星は増えません）。
+            （感想がないダミーなので、共鳴マップに点は増えません）。
           </p>
         </div>
         <div className="flex gap-2">
@@ -175,14 +175,14 @@ export default function TestModePage() {
         <button
           disabled={busy}
           onClick={() =>
-            run("星座を再計算", async () => {
+            run("共鳴マップを再計算", async () => {
               await refreshGraph(getSupabase());
               return "共鳴グラフを再計算しました";
             })
           }
           className="flex-1 rounded-xl border border-white/20 px-4 py-3 text-sm disabled:opacity-40"
         >
-          星座を再計算
+          共鳴マップを再計算
         </button>
         <button
           disabled={busy || !token}

@@ -4,7 +4,7 @@ import Constellation from "@/components/Constellation";
 import ResonanceBurst from "@/components/ResonanceBurst";
 import ResonanceFeed from "@/components/ResonanceFeed";
 
-// 会場の大画面用ビュー: 共鳴の星座を主役に、右に共鳴カードを並べる。
+// 会場の大画面用ビュー: 共鳴マップを主役に、右に共鳴カードを並べる。
 // 共鳴が生まれた瞬間は画面全体をバースト演出が数秒だけ乗っ取る（音は鳴らさない）。
 export default function ScreenPage() {
   return (
@@ -14,7 +14,7 @@ export default function ScreenPage() {
           <p className="text-sm tracking-widest text-violet-300/70">
             運命の出会いを科学する
           </p>
-          <h1 className="mt-1 text-4xl font-bold">共鳴の星座</h1>
+          <h1 className="mt-1 text-4xl font-bold">共鳴マップ</h1>
         </div>
         <div className="grid flex-1 grid-cols-[3fr_2fr] gap-8">
           <div className="rounded-3xl border border-white/10 bg-black/30">
@@ -25,7 +25,7 @@ export default function ScreenPage() {
           </div>
         </div>
       </div>
-      {/* 会場の大画面はページ遷移せず、この画面の星座をそのままズームさせる */}
+      {/* 会場の大画面はページ遷移せず、この画面の共鳴マップをそのままズームさせる */}
       <ResonanceBurst focusPath={null} />
     </main>
   );

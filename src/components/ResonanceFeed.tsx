@@ -161,26 +161,42 @@ export default function ResonanceFeed({
                 </p>
               )}
 
-              {item.reaction_phrase && (
-                <p
-                  className={`font-medium text-white ${large ? "text-3xl" : "text-[22px]"}`}
+              {/* いちばん伝えたいのは共鳴の強さなので、数値を主役にする */}
+              <p
+                className={`font-bold tracking-tight text-white ${
+                  large ? "text-7xl" : "text-5xl"
+                }`}
+              >
+                {(Number(item.score) * 100).toFixed(0)}
+                <span
+                  className={`ml-1 font-medium text-white/50 ${
+                    large ? "text-2xl" : "text-lg"
+                  }`}
                 >
-                  {item.reaction_phrase}
-                </p>
-              )}
+                  %
+                </span>
+              </p>
+              <p
+                className={`mt-0.5 tracking-widest text-white/40 ${large ? "text-sm" : "text-[10px]"}`}
+              >
+                共鳴度
+              </p>
 
               <div
-                className={`mt-2 inline-flex items-center gap-2 text-white/60 ${large ? "text-lg" : "text-sm"}`}
+                className={`mt-3 inline-flex items-center gap-2 text-white/70 ${large ? "text-xl" : "text-base"}`}
               >
                 <span>{item.nicknames[0]}</span>
                 <IconArrowsLeftRight size={large ? 18 : 14} aria-hidden />
                 <span>{item.nicknames[1]}</span>
               </div>
 
-              <p className="mt-1 text-[11px] text-white/35">
-                共鳴度 {(Number(item.score) * 100).toFixed(0)}%
-                {item.tone_label && ` ・ 決め手は「${item.tone_label}」`}
-              </p>
+              {item.reaction_phrase && (
+                <p
+                  className={`mt-2 text-white/40 ${large ? "text-sm" : "text-[11px]"}`}
+                >
+                  {item.reaction_phrase}
+                </p>
+              )}
             </div>
           </div>
         );

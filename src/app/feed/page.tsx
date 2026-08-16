@@ -65,7 +65,8 @@ export default function FeedPage() {
       <section>
         <p className="text-sm text-white/60">共鳴マップ</p>
         <p className="mb-2 text-xs text-white/35">
-          中心があなた。感じ方が近い人ほど近くに置かれ、共鳴したペアは線でつながります。
+          高揚感・悲しみ・怒りの3つの感情を中心に、強く響き合った感情のそばへ置かれます。
+          共鳴したペアは線でつながります。
         </p>
         <div className="aspect-square overflow-hidden rounded-2xl border border-white/10 bg-[#0d0b14]">
           <Constellation meId={meId} />

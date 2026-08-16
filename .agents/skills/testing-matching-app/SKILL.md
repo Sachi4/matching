@@ -88,9 +88,10 @@ Direct `type` of Japanese may produce nothing. Use `printf 'テキスト' | DISP
   2-6s). Install a 50ms poller in the page recording `document.querySelector('[role="dialog"]')?.innerText` and the
   constellation `<g>` transform, fire matches from the shell with `date`-stamped logs, then read the poller log.
   Run the poller on `/screen`: on `/admin/test` the post-burst `router.push('/feed')` reloads the page and kills it.
-- For layout assertions, read the `<line>` elements of `svg[aria-label="共鳴の星座"]` in DOM order — they map 1:1 to
-  `resonance_graph.payload.edges` filtered to present nodes, so you can join by index and correlate `proximity`
-  with the rendered length.
+- For layout assertions on `svg[aria-label="3つの感情の周囲に広がる共鳴マップ"]`: the thin `<line>`s are participant→emotion-hub
+  links (one per `payload.nodes[].tone_weights` entry above 0.12), the thick orange ones are matched pairs. A
+  participant's position is the `tone_weights`-weighted centroid of the three hub circles, so verify placement by
+  comparing a node's dominant weight with which hub it sits nearest.
 - The burst overlay is full-screen: a click aimed at a debug-UI button while a burst is up dismisses the burst instead
   (and may fall through to a link underneath).
 - A stale dev build can serve `/feed` as 500 with `__webpack_modules__[moduleId] is not a function` —

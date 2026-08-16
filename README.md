@@ -10,9 +10,9 @@
    1. 画像を見る
    2. 感じたことを記録する（トーンごとのヒント語 + ひとこと自由記述）
    （送信したら即座に次の画像へ進む）
-3. `/feed` … 共鳴カード（上部に横スワイプで5件まで） + 共鳴マップ（星座）
+3. `/feed` … 共鳴カード（上部に横スワイプで5件まで） + 共鳴マップ
    - `/matches` … 5件に収まらない共鳴の一覧
-4. `/screen` … 会場の大画面用ビュー（星座と共鳴カード）
+4. `/screen` … 会場の大画面用ビュー（共鳴マップと共鳴カード）
 5. `/admin/test` … 運営用デバッグUI（`test_mode` が有効なときだけ使える）
 
 刺激（画像）・ヒント語の追加や変更は、Supabase の Table Editor から
@@ -43,7 +43,7 @@
   4. 閾値を超えたペアを `matches` に insert。感想文の類似度が最も高かったトーンを
      `decisive_tone_id` として記録し、そのトーンの感想文から Claude API で「反応名」（詩的な短句）を生成
 - フロントは Supabase Realtime（`postgres_changes`）で `matches` / `stimulus_responses` の insert を購読し、
-  共鳴フィードと星座を即時更新し、共鳴の瞬間はバースト演出を出す
+  共鳴カードと共鳴マップを即時更新し、共鳴の瞬間はバースト演出を出す
 
 ## セットアップ
 
@@ -77,9 +77,23 @@ npm install
 npm run dev
 ```
 
-### 共鳴の星座（`/feed` ・ `/screen`）
+### 共鳴カード（`/feed` ・ `/matches` ・ `/screen`）
 
-- 自分のドットを中心に固定し、共鳴度が高い人ほど近くに配置する（d3-force の force-directed layout）
+- 重要度の順に大きさを決めている: 共鳴度の数値（最大）＞ 2人のニックネーム ＞ 反応名（最小）
+- 反応名（「色が薄れと遠い記憶」のような詩的な短句）は解釈が要る抽象表現なので、
+  カードでは補足として小さく添える
+- カードの縁のグラデーションは `decisive_tone_id` の色（ラベルとしては出さない）
+
+### 共鳴マップ（`/feed` ・ `/screen`）
+
+- 高揚感・悲しみ・怒りの3感情を大きなハブとして三角に置き、参加者はその重心に配置する
+  （Flourish の Premier league managers and clubs と同じ構造。クラブ＝感情、監督＝参加者）
+- 参加者の感情寄り（`tone_weights`）は「そのトーンの刺激で他の人とどれだけ響き合ったか」から作る
+  1. 参加者×トーンごとに、同じ刺激に答えた他の人との embedding 類似度の平均を出す
+  2. トーン全体の平均との差をとる（画像ごとに類似度の水準が違うため、生の値では全員が同じ感情に寄る）
+  3. 参加者内でsoftmax（`app_settings.tone_map_temperature`）して合計1に正規化する
+- 強く寄っている感情があればそのハブの近くに、まんべんなく響く人は中央に集まる
+- 参加者からハブへの線は寄りの強さで濃さが変わり、共鳴が成立したペアはオレンジの太い線でつながる
 - 座標のもとになる類似度は DB関数 `refresh_resonance_graph()` が全員分まとめて計算し、
   `resonance_graph` にキャッシュする。`stimulus_responses` / `matches` への
   書き込みごとにトリガで再計算され、フロントはRealtimeでその更新を受け取るだけ（毎フレームの再計算はしない）
@@ -90,7 +104,7 @@ npm run dev
 - `ResonanceBurst`（`/respond` `/feed` `/screen` `/admin/test`）が `matches` の insert を購読し、
   画面中央にバースト演出（広がる2重の輪 + キラキラアイコン + 反応名 + 2人のニックネーム）を
   5秒間出す。タップでも閉じる
-- バーストが終わると星座UIに戻り、共鳴した2人のドットを数秒間だけズームして強調する
+- バーストが終わると共鳴マップに戻り、共鳴した2人のドットを数秒間だけズームして強調する
   （`src/lib/resonanceFocus.ts` を介して `Constellation` に伝える）
 - 会場の大画面（`/screen`）は音も動画もなし
 - `prefers-reduced-motion` が有効な環境ではアニメーションを省く
@@ -118,7 +132,7 @@ export SUPABASE_SERVICE_ROLE_KEY=...
 node scripts/test-data.mjs test-mode on
 node scripts/test-data.mjs seed-pair --fixture 0        # a) 実パイプラインを通る高スコアペア
 node scripts/test-data.mjs force-match --score 0.93 --phrase "しずかな共振"  # b) 直接insert
-node scripts/test-data.mjs refresh-graph                # 星座の再計算
+node scripts/test-data.mjs refresh-graph                # 共鳴マップの再計算
 node scripts/test-data.mjs reembed                      # embeddingを全件作り直す
 node scripts/test-data.mjs similarity-stats             # 閾値調整用の類似度分布
 node scripts/test-data.mjs cleanup                      # テストデータ削除
@@ -134,7 +148,8 @@ embeddingモデル（`GEMINI_API_KEY` の有無など）を切り替えたとき
 
 ```sql
 update app_settings set value = 0.6 where key = 'match_threshold';  -- embedding類似度そのもの（初期値 0.55）
-update app_settings set value = 8 where key = 'graph_top_k';         -- 星座の1人あたりのエッジ本数
+update app_settings set value = 8 where key = 'graph_top_k';         -- 共鳴マップの1人あたりのエッジ本数
+update app_settings set value = 12 where key = 'tone_map_temperature'; -- 感情寄りの尖り（大きいほど特定の感情に寄る）
 update app_settings set value = 0 where key = 'test_mode';           -- 本番は0
 ```
 

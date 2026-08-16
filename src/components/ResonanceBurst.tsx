@@ -15,12 +15,12 @@ const MAX_QUEUE = 3;
 type Props = {
   /** 指定すると、その人が当事者の共鳴だけを演出する（未指定＝全員ぶん＝会場スクリーン） */
   meId?: string | null;
-  /** 演出後に星座UIへ遷移してハイライトするか（会場スクリーンでは遷移しない） */
+  /** 演出後に共鳴マップへ遷移してハイライトするか（会場スクリーンでは遷移しない） */
   focusPath?: string | null;
 };
 
 // 共鳴が生まれた瞬間、画面を数秒間だけ占有するバースト演出。
-// 演出が終わると星座UIに移り、共鳴した2人のドットにズームする。
+// 演出が終わると共鳴マップに移り、共鳴した2人のドットにズームする。
 export default function ResonanceBurst({ meId, focusPath = "/feed" }: Props) {
   const [queue, setQueue] = useState<MatchDetail[]>([]);
   const seen = useRef<Set<string>>(new Set());
@@ -65,7 +65,7 @@ export default function ResonanceBurst({ meId, focusPath = "/feed" }: Props) {
     const [shown, ...rest] = queue;
     if (!shown) return;
     setQueue(rest);
-    // 演出のあと、その共鳴が全体のどこで起きたのかを星座UIで見せる
+    // 演出のあと、その共鳴が全体のどこで起きたのかを共鳴マップで見せる
     requestResonanceFocus(
       shown.match.participant_id_a,
       shown.match.participant_id_b,
@@ -115,17 +115,24 @@ export function Burst({
           />
           <IconSparkles size={40} color="#D85A30" aria-hidden />
         </div>
-        <p className="reveal-text mt-2 mb-1 text-[13px] text-white/60">
+        <p className="reveal-text mt-2 text-[13px] text-white/60">
           共鳴が発生しました
         </p>
-        <p className="reveal-text mb-3 text-[22px] font-medium text-white">
-          {match.reaction_phrase}
+        {/* カードと同じく、共鳴の強さを主役にする */}
+        <p className="reveal-text text-6xl font-bold tracking-tight text-white">
+          {(Number(match.score) * 100).toFixed(0)}
+          <span className="ml-1 text-xl font-medium text-white/50">%</span>
         </p>
-        <div className="reveal-text inline-flex items-center gap-2 text-sm text-white/60">
+        <div className="reveal-text mt-3 inline-flex items-center gap-2 text-base text-white/70">
           <span>{nicknames[0]}</span>
           <IconArrowsLeftRight size={14} aria-hidden />
           <span>{nicknames[1]}</span>
         </div>
+        {match.reaction_phrase && (
+          <p className="reveal-text mt-2 text-[11px] text-white/40">
+            {match.reaction_phrase}
+          </p>
+        )}
       </div>
     </div>
   );
