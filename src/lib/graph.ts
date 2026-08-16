@@ -27,6 +27,9 @@ export type GraphEdge = {
   shared_stimuli: number;
   matched: boolean;
   reaction_phrase: string | null;
+  // 成立したペアの共鳴度と決め手のトーン（古いキャッシュには無いのでoptional）
+  score?: number;
+  decisive_tone_id?: string | null;
 };
 
 export type ResonanceGraph = {

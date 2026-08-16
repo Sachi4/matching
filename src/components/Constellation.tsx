@@ -44,6 +44,9 @@ const POLE_RADIUS = 300;
 const FOCUS_SCALE = 2.2;
 // これ未満の寄りは線を描かない（3本とも薄く出ると三角形が潰れて見える）
 const MIN_LINK_WEIGHT = 0.12;
+// 配置だけ寄りを尖らせる指数。全員の寄りが小さいと中央に固まって名前が読めないため、
+// 重心をとる前に weight^SPREAD_POWER で正規化して、いちばん響いた感情の側へ押し出す
+const SPREAD_POWER = 3;
 
 // 感情ハブを上・右下・左下の順に等間隔で置く
 function buildPoles(tones: GraphTone[]): Pole[] {
@@ -134,18 +137,22 @@ export default function Constellation({
         poleById.has(id),
       );
       const total = weights.reduce((sum, [, w]) => sum + w, 0);
+      const spread = weights.map(
+        ([id, w]) => [id, Math.pow(w, SPREAD_POWER)] as [string, number],
+      );
+      const spreadTotal = spread.reduce((sum, [, w]) => sum + w, 0);
       const strongest = [...weights].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
       // トーン情報が無い（古いキャッシュ）ときは円周に均等に置くだけにする
       const fallbackAngle =
         (i / Math.max(1, graph.nodes.length)) * Math.PI * 2;
       const anchor =
-        total > 0
-          ? weights.reduce(
+        spreadTotal > 0
+          ? spread.reduce(
               (acc, [id, w]) => {
                 const pole = poleById.get(id)!;
                 return {
-                  x: acc.x + (pole.x * w) / total,
-                  y: acc.y + (pole.y * w) / total,
+                  x: acc.x + (pole.x * w) / spreadTotal,
+                  y: acc.y + (pole.y * w) / spreadTotal,
                 };
               },
               { x: 0, y: 0 },
@@ -182,7 +189,7 @@ export default function Constellation({
         forceY<LayoutNode>((d) => d.ay).strength(0.6),
       )
       .force("charge", forceManyBody().strength(-24))
-      .force("collide", forceCollide(large ? 26 : 22))
+      .force("collide", forceCollide(large ? 40 : 30))
       .stop()
       .tick(300);
 
@@ -273,7 +280,7 @@ export default function Constellation({
                   x2={b.x}
                   y2={b.y}
                   stroke="#F2A65A"
-                  strokeWidth={4}
+                  strokeWidth={meId && (l.a === meId || l.b === meId) ? 6 : 4}
                   strokeOpacity={0.9}
                   className="animate-resonance-line"
                 />
@@ -333,18 +340,49 @@ export default function Constellation({
                       highlighted || isMe ? 1 : focus ? 0.25 : 0.85
                     }
                   />
-                  {(isMe || large || highlighted) && (
-                    <text
-                      x={n.x}
-                      y={(n.y ?? 0) + r + (large ? 22 : 18)}
-                      textAnchor="middle"
-                      fill={isMe ? "#ffffff" : "rgba(255,255,255,0.6)"}
-                      fontSize={large ? 20 : 16}
-                    >
-                      {isMe ? `${n.nickname}（あなた）` : n.nickname}
-                    </text>
-                  )}
+                  {/* 誰がどこにいるかが分からないと読めないので、名前は常に出す */}
+                  <text
+                    x={n.x}
+                    y={(n.y ?? 0) + r + (large ? 24 : 20)}
+                    textAnchor="middle"
+                    fill={isMe || highlighted ? "#ffffff" : "rgba(255,255,255,0.85)"}
+                    fontSize={large ? 22 : 18}
+                    fontWeight={isMe || highlighted ? 700 : 500}
+                    stroke="#0b0a11"
+                    strokeWidth={4}
+                    strokeOpacity={0.85}
+                    paintOrder="stroke"
+                  >
+                    {isMe ? `${n.nickname}（あなた）` : n.nickname}
+                  </text>
                 </g>
+              );
+            })}
+
+            {/* 成立したペアの線に「共鳴度％＋どの感情で共鳴したか」を出す */}
+            {layout.matched.map((l) => {
+              const a = layout.byId.get(l.a)!;
+              const b = layout.byId.get(l.b)!;
+              const tone = l.decisive_tone_id
+                ? layout.poleById.get(l.decisive_tone_id)
+                : null;
+              const score = Math.round((l.score ?? l.resonance) * 100);
+              return (
+                <text
+                  key={`match-label-${l.a}-${l.b}`}
+                  x={((a.x ?? 0) + (b.x ?? 0)) / 2}
+                  y={((a.y ?? 0) + (b.y ?? 0)) / 2 - 6}
+                  textAnchor="middle"
+                  fill="#F2A65A"
+                  fontSize={large ? 22 : 18}
+                  fontWeight={700}
+                  stroke="#0b0a11"
+                  strokeWidth={4}
+                  strokeOpacity={0.85}
+                  paintOrder="stroke"
+                >
+                  {tone ? `${score}% ・ ${tone.label}` : `${score}%`}
+                </text>
               );
             })}
           </g>
