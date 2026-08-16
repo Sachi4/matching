@@ -110,12 +110,32 @@ export default function ResonanceFeed({
 
   // 自分の共鳴を先に、それ以外は新しい順
   const ordered = useMemo(() => {
-    const sorted = [...items].sort((a, b) => {
+    const byPriority = (a: FeedItem, b: FeedItem) => {
       const mine = Number(isMine(b)) - Number(isMine(a));
       return mine !== 0 ? mine : b.created_at.localeCompare(a.created_at);
-    });
-    return limit ? sorted.slice(0, limit) : sorted;
-  }, [items, isMine, limit]);
+    };
+    const sorted = [...items].sort(byPriority);
+    if (!limit) return sorted;
+
+    // 新しい順に切るだけだと特定の感情の共鳴だけで埋まってしまうので、
+    // 感情ごとの列から1件ずつ取っていって枠を埋める
+    const groups = new Map<string, FeedItem[]>();
+    for (const item of sorted) {
+      const key = item.tone_label ?? "";
+      groups.set(key, [...(groups.get(key) ?? []), item]);
+    }
+    const columns = [...groups.values()];
+    const picked: FeedItem[] = [];
+    for (let i = 0; picked.length < limit; i++) {
+      if (!columns.some((c) => c.length > i)) break;
+      for (const column of columns) {
+        if (column[i] && picked.length < limit) picked.push(column[i]);
+      }
+    }
+    // 自分がいる画面（/feed）は自分の共鳴を先に出す。会場の大画面（/screen）は
+    // 取った順（感情が交互）のままにして、先頭から見ても感情が混ざるようにする
+    return meId ? picked.sort(byPriority) : picked;
+  }, [items, isMine, limit, meId]);
 
   useEffect(() => {
     onTotalChange?.(items.length);
