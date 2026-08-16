@@ -146,7 +146,9 @@ export default function ResonanceFeed({
           <div
             key={item.id}
             className={`rounded-2xl p-[2px] ${item.isNew ? "animate-pop-in" : ""} ${
-              carousel ? "w-[85%] shrink-0 snap-center" : ""
+              carousel
+                ? `shrink-0 snap-center ${large ? "w-[30%]" : "w-[85%]"}`
+                : ""
             }`}
             style={{
               background: `linear-gradient(120deg, ${palette[0]}, ${palette[1]}, ${palette[2]})`,

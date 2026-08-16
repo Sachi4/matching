@@ -347,26 +347,6 @@ export default function Constellation({
                 </g>
               );
             })}
-
-            {/* 成立したペアの反応名は、点より前面に出す */}
-            {layout.matched
-              .filter((l) => l.reaction_phrase)
-              .map((l) => {
-                const a = layout.byId.get(l.a)!;
-                const b = layout.byId.get(l.b)!;
-                return (
-                  <text
-                    key={`label-${l.a}-${l.b}`}
-                    x={((a.x ?? 0) + (b.x ?? 0)) / 2}
-                    y={((a.y ?? 0) + (b.y ?? 0)) / 2 - 8}
-                    textAnchor="middle"
-                    fill="rgba(255,255,255,0.45)"
-                    fontSize={large ? 16 : 13}
-                  >
-                    {l.reaction_phrase}
-                  </text>
-                );
-              })}
           </g>
         </svg>
       )}
