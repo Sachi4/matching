@@ -52,8 +52,9 @@ const MIN_LINK_WEIGHT = 0.12;
 const CLUSTER_RING_SIZE = 6;
 // 重心へ戻す割合。寄りが偏っていない人ほど中央寄りになる
 const CENTROID_PULL = 0.15;
-// meIdがないとき（/screen）にラベルを出す共鳴の数
-const SCREEN_LABEL_LIMIT = 2;
+// meIdがないとき（/screen）に感情ごとにラベルを出す共鳴の数。
+// 共鳴度が高い順に取ると特定の感情だけで埋まるので、感情ごとに枠を確保する
+const SCREEN_LABELS_PER_TONE = 1;
 // ラベルの避け先の上下幅
 const LABEL_OFFSETS = [-14, -70, 42, -126, 98, -182, 154] as const;
 // 文字同士をこれだけ離す
@@ -364,7 +365,7 @@ export default function Constellation({
   const isFocused = (id: string) => !!focus && (focus.a === id || focus.b === id);
   const isMine = (l: GraphEdge) => !!meId && (l.a === meId || l.b === meId);
 
-  // 成立したペアは多いので、ラベルは「自分の共鳴」「いま光った共鳴」「共鳴度が高いもの」に絞る。
+  // 成立したペアは多いので、ラベルは「自分の共鳴」「いま光った共鳴」「感情ごとに共鳴度が高いもの」に絞る。
   // 他のラベルやニックネームと重なるときは上下に逃がし、逃げないものだけ間引く
   // （自分の共鳴と光った共鳴は消さない）
   const labeled = useMemo(() => {
@@ -378,9 +379,16 @@ export default function Constellation({
     const rest = [...layout.matched]
       .filter((l) => !relevant.includes(l))
       .sort((a, b) => (b.score ?? b.resonance) - (a.score ?? a.resonance));
+    const perTone = new Map<string, GraphEdge[]>();
+    for (const l of rest) {
+      const key = l.decisive_tone_id ?? "";
+      const picked = perTone.get(key) ?? [];
+      if (picked.length >= SCREEN_LABELS_PER_TONE) continue;
+      perTone.set(key, [...picked, l]);
+    }
     const candidates = meId
       ? relevant
-      : [...relevant, ...rest.slice(0, SCREEN_LABEL_LIMIT)];
+      : [...relevant, ...[...perTone.values()].flat()];
 
     // ニックネームは点の下、感情名はハブの上に出ているので、その箱を先に埋めておく
     const nameSize = large ? 22 : 18;
